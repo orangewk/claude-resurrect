@@ -14,6 +14,7 @@ export interface DiscoveredSession {
   readonly sessionId: string;
   readonly firstPrompt: string;
   readonly lastSeen: number; // Unix ms timestamp
+  readonly fileSize: number; // bytes, 0 if file not found
 }
 
 /**
@@ -25,6 +26,7 @@ export function discoverSessions(
 ): readonly DiscoveredSession[] {
   const entries = readHistoryEntries();
   const normalizedWorkspace = normalizePath(workspacePath);
+  const projectDir = findProjectDir(workspacePath);
 
   // Group by sessionId, keep latest timestamp and first prompt per session
   const sessionMap = new Map<
@@ -54,10 +56,60 @@ export function discoverSessions(
 
   const sessions: DiscoveredSession[] = [];
   for (const [sessionId, data] of sessionMap) {
-    sessions.push({ sessionId, ...data });
+    const fileSize = projectDir ? getSessionFileSize(projectDir, sessionId) : 0;
+    sessions.push({ sessionId, ...data, fileSize });
   }
 
   return sessions.sort((a, b) => b.lastSeen - a.lastSeen);
+}
+
+/**
+ * Get session .jsonl file size in bytes.
+ * Returns 0 if file not found.
+ */
+function getSessionFileSize(projectDir: string, sessionId: string): number {
+  const filePath = path.join(projectDir, `${sessionId}.jsonl`);
+  try {
+    return fs.statSync(filePath).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Find the project directory under ~/.claude/projects/ matching a workspace path.
+ * CLI slug: path.replace(/[^a-zA-Z0-9]/g, "-") — case-sensitive, so we try both.
+ */
+function findProjectDir(workspacePath: string): string | undefined {
+  const projectsDir = path.join(getClaudeDir(), "projects");
+  if (!fs.existsSync(projectsDir)) return undefined;
+  const slug = workspacePath.replace(/[^a-zA-Z0-9]/g, "-");
+  const candidate = path.join(projectsDir, slug);
+  if (fs.existsSync(candidate)) return candidate;
+  // Case mismatch fallback: scan dirs
+  try {
+    const normalizedSlug = slug.toLowerCase();
+    for (const dir of fs.readdirSync(projectsDir)) {
+      if (dir.toLowerCase() === normalizedSlug) {
+        return path.join(projectsDir, dir);
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Look up the .jsonl file size for a session.
+ */
+export function lookupSessionFileSize(
+  workspacePath: string,
+  sessionId: string,
+): number {
+  const projectDir = findProjectDir(workspacePath);
+  if (!projectDir) return 0;
+  return getSessionFileSize(projectDir, sessionId);
 }
 
 /**

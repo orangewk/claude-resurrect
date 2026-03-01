@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import { SessionStore } from "./session-store";
-import { discoverSessions } from "./claude-dir";
+import { discoverSessions, lookupSessionFileSize } from "./claude-dir";
 import type { SessionMapping } from "./types";
 import type { DiscoveredSession } from "./claude-dir";
 
@@ -260,11 +260,14 @@ async function showQuickPick(
       action: "new",
     });
     for (const mapping of activeItems) {
+      const size = formatSize(lookupSessionFileSize(projectPath, mapping.sessionId));
       items.push({
         label: `$(circle-filled) ${mapping.terminalName}`,
-        description: mapping.firstPrompt
-          ? `"${mapping.firstPrompt.slice(0, 40)}" — ${formatAge(mapping.lastSeen)}`
-          : `${mapping.sessionId.slice(0, 8)}... — ${formatAge(mapping.lastSeen)}`,
+        description: [
+          mapping.firstPrompt ? `"${mapping.firstPrompt.slice(0, 40)}"` : mapping.sessionId.slice(0, 8),
+          size,
+          formatAge(mapping.lastSeen),
+        ].filter(Boolean).join(" · "),
         action: "resume-tracked",
         mapping,
       });
@@ -277,16 +280,18 @@ async function showQuickPick(
   for (const entry of merged) {
     if (remaining <= 0) break;
     if (entry.kind === "tracked") {
+      const size = formatSize(lookupSessionFileSize(projectPath, entry.mapping.sessionId));
       resumableMenuItems.push({
         label: `$(circle-outline) ${entry.mapping.firstPrompt ?? entry.mapping.sessionId.slice(0, 8)}`,
-        description: formatAge(entry.mapping.lastSeen),
+        description: [size, formatAge(entry.mapping.lastSeen)].filter(Boolean).join(" · "),
         action: "resume-tracked",
         mapping: entry.mapping,
       });
     } else {
+      const size = formatSize(entry.session.fileSize);
       resumableMenuItems.push({
         label: `$(circle-outline) ${entry.session.firstPrompt.slice(0, 40)}`,
-        description: formatAge(entry.session.lastSeen),
+        description: [size, formatAge(entry.session.lastSeen)].filter(Boolean).join(" · "),
         action: "resume-discovered",
         discovered: entry.session,
       });
@@ -307,9 +312,10 @@ async function showQuickPick(
   const completedMenuItems: MenuItem[] = [];
   for (const mapping of completedItems) {
     if (remaining <= 0) break;
+    const size = formatSize(lookupSessionFileSize(projectPath, mapping.sessionId));
     completedMenuItems.push({
       label: `$(check) ${mapping.firstPrompt ?? mapping.sessionId.slice(0, 8)}`,
-      description: formatAge(mapping.lastSeen),
+      description: [size, formatAge(mapping.lastSeen)].filter(Boolean).join(" · "),
       action: "resume-tracked",
       mapping,
     });
@@ -375,4 +381,13 @@ function formatAge(timestamp: number): string {
   }
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return "";
+  if (bytes < 1024) return `${bytes}B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)}KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)}MB`;
 }

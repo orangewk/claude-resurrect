@@ -51,6 +51,7 @@ vi.mock("vscode", () => vscode);
 // Mock claude-dir to avoid filesystem access
 vi.mock("./claude-dir", () => ({
   discoverSessions: vi.fn(() => []),
+  lookupSessionFileSize: vi.fn(() => 0),
 }));
 
 describe("activate", () => {
