@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import { SessionStore } from "./session-store";
-import { discoverSessions, lookupSessionFileSize } from "./claude-dir";
+import { discoverSessions, isValidSessionId, lookupSessionFileSize } from "./claude-dir";
 import type { SessionMapping } from "./types";
 import type { DiscoveredSession } from "./claude-dir";
 
@@ -84,6 +84,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const config = vscode.workspace.getConfiguration("claudeResurrect");
     const autoRestore = config.get<boolean>("autoRestore", true);
 
+    // 14日（336時間）超過のマッピングを globalState から削除
+    void store.pruneExpired(336);
+
     if (autoRestore) {
       void autoRestoreSessions(store, path, updateStatusBar);
     }
@@ -161,6 +164,11 @@ async function resumeSession(
   projectPath: string,
   onUpdate: () => void,
 ): Promise<void> {
+  if (!isValidSessionId(sessionId)) {
+    console.error(`[Claude Resurrect] Invalid session ID rejected: ${sessionId.slice(0, 20)}`);
+    return;
+  }
+
   const terminalName = `Claude: ${displayName.slice(0, 30)}`;
 
   await store.upsert({
@@ -177,7 +185,7 @@ async function resumeSession(
     cwd: projectPath,
     isTransient: true,
   });
-  terminal.sendText(`${getClaudePath()} --resume ${sessionId}`);
+  terminal.sendText(`${getClaudePath()} --session-id ${sessionId}`);
   terminal.show();
 
   onUpdate();
@@ -189,17 +197,24 @@ async function autoRestoreSessions(
   projectPath: string,
   onUpdate: () => void,
 ): Promise<void> {
+  const config = vscode.workspace.getConfiguration("claudeResurrect");
+  const maxRestore = config.get<number>("maxAutoRestore", 10);
   const active = store.getActive(projectPath);
   if (active.length === 0) return;
 
-  for (const mapping of active) {
+  const toRestore = active.slice(0, maxRestore);
+  const skipped = active.length - toRestore.length;
+
+  for (const mapping of toRestore) {
     const displayName = mapping.firstPrompt ?? mapping.sessionId.slice(0, 8);
     await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate);
   }
 
-  vscode.window.showInformationMessage(
-    `Claude Resurrect: Restored ${active.length} interrupted session(s).`,
-  );
+  let message = `Claude Resurrect: Restored ${toRestore.length} interrupted session(s).`;
+  if (skipped > 0) {
+    message += ` ${skipped} older session(s) skipped (limit: ${maxRestore}).`;
+  }
+  vscode.window.showInformationMessage(message);
 }
 
 async function showQuickPick(
