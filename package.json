@@ -1,0 +1,76 @@
+{
+  "name": "claude-resurrect",
+  "displayName": "Claude Resurrect",
+  "description": "Automatically resume Claude Code CLI sessions after VSCode restart",
+  "version": "0.1.0",
+  "publisher": "orangewk",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/orangewk/claude-resurrect"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudeResurrect.newSession",
+        "title": "Claude Resurrect: New Session"
+      },
+      {
+        "command": "claudeResurrect.resumeAll",
+        "title": "Claude Resurrect: Resume All Sessions"
+      },
+      {
+        "command": "claudeResurrect.showMenu",
+        "title": "Claude Resurrect: Show Menu"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Resurrect",
+      "properties": {
+        "claudeResurrect.autoRestore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically restore Claude sessions on VSCode startup"
+        },
+        "claudeResurrect.autoRestoreMaxAge": {
+          "type": "number",
+          "default": 24,
+          "description": "Maximum age (hours) of sessions to auto-restore"
+        },
+        "claudeResurrect.claudePath": {
+          "type": "string",
+          "default": "claude",
+          "description": "Path to the Claude CLI executable"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
