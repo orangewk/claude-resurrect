@@ -6,10 +6,6 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        // フォルダパスは --extensionDevelopmentPath より前に置く。
-        // VSCode CLI は最初の非フラグ引数をワークスペースとして開く。
-        // ref: https://github.com/microsoft/vscode/blob/main/.vscode/launch.json
-        "${workspaceFolder}",
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "outFiles": ["${workspaceFolder}/out/**/*.js"],

@@ -1,3 +1,5 @@
+export type SessionStatus = "active" | "inactive" | "completed";
+
 /** Terminal-to-session mapping persisted in globalState */
 export interface SessionMapping {
   readonly terminalName: string;
@@ -5,6 +7,7 @@ export interface SessionMapping {
   readonly projectPath: string;
   readonly lastSeen: number; // Unix ms timestamp
   readonly firstPrompt?: string; // first user input for display
+  readonly status: SessionStatus;
 }
 
 /** Entry from ~/.claude/history.jsonl */

@@ -1,4 +1,5 @@
 import type { SessionMapping } from "./types";
+import { normalizePath } from "./normalize-path";
 
 const STORAGE_KEY = "claudeResurrectMappings";
 
@@ -14,7 +15,11 @@ export class SessionStore {
     initial: SessionMapping[],
     persist: (key: string, value: unknown) => Thenable<void>,
   ) {
-    this.mappings = [...initial];
+    // Migrate legacy entries that lack a status field
+    this.mappings = initial.map((m) => ({
+      ...m,
+      status: m.status ?? "inactive",
+    }));
     this.persist = persist;
   }
 
@@ -39,16 +44,27 @@ export class SessionStore {
     );
   }
 
-  /** Get mappings within TTL (hours) for a project */
-  getRestorable(projectPath: string, ttlHours: number): readonly SessionMapping[] {
-    const cutoff = Date.now() - ttlHours * 60 * 60 * 1000;
-    return this.getByProject(projectPath).filter((m) => m.lastSeen >= cutoff);
+  /** Get active sessions (interrupted by VSCode restart) for auto-restore */
+  getActive(projectPath: string): readonly SessionMapping[] {
+    return this.getByProject(projectPath).filter(
+      (m) => m.status === "active",
+    );
   }
 
-  /** Get expired mappings (beyond TTL) for a project */
-  getExpired(projectPath: string, ttlHours: number): readonly SessionMapping[] {
+  /** Get inactive sessions within TTL for Quick Pick display */
+  getRestorable(projectPath: string, ttlHours: number): readonly SessionMapping[] {
     const cutoff = Date.now() - ttlHours * 60 * 60 * 1000;
-    return this.getByProject(projectPath).filter((m) => m.lastSeen < cutoff);
+    return this.getByProject(projectPath).filter(
+      (m) => m.status === "inactive" && m.lastSeen >= cutoff,
+    );
+  }
+
+  /** Get completed sessions within TTL for Quick Pick display */
+  getCompleted(projectPath: string, ttlHours: number): readonly SessionMapping[] {
+    const cutoff = Date.now() - ttlHours * 60 * 60 * 1000;
+    return this.getByProject(projectPath).filter(
+      (m) => m.status === "completed" && m.lastSeen >= cutoff,
+    );
   }
 
   /** Add or update a mapping */
@@ -69,14 +85,42 @@ export class SessionStore {
     await this.persist(STORAGE_KEY, this.mappings);
   }
 
-  /** Remove a mapping by terminal name and project */
-  async remove(terminalName: string, projectPath: string): Promise<void> {
+  /** Mark a session as inactive (terminal closed by user) */
+  async markInactive(terminalName: string, projectPath: string): Promise<void> {
     const normalized = normalizePath(projectPath);
-    this.mappings = this.mappings.filter(
-      (m) =>
-        !(m.terminalName === terminalName &&
-          normalizePath(m.projectPath) === normalized),
+    const idx = this.mappings.findIndex(
+      (m) => m.terminalName === terminalName &&
+        normalizePath(m.projectPath) === normalized,
     );
+    if (idx < 0) return;
+
+    const existing = this.mappings[idx];
+    // completed is a terminal state — don't regress to inactive
+    if (existing.status === "completed") return;
+
+    this.mappings = [
+      ...this.mappings.slice(0, idx),
+      { ...existing, status: "inactive", lastSeen: Date.now() },
+      ...this.mappings.slice(idx + 1),
+    ];
+    await this.persist(STORAGE_KEY, this.mappings);
+  }
+
+  /** Mark a session as completed (CLI exited normally) */
+  async markCompleted(terminalName: string, projectPath: string): Promise<void> {
+    const normalized = normalizePath(projectPath);
+    const idx = this.mappings.findIndex(
+      (m) => m.terminalName === terminalName &&
+        normalizePath(m.projectPath) === normalized,
+    );
+    if (idx < 0) return;
+
+    const existing = this.mappings[idx];
+    this.mappings = [
+      ...this.mappings.slice(0, idx),
+      { ...existing, status: "completed", lastSeen: Date.now() },
+      ...this.mappings.slice(idx + 1),
+    ];
     await this.persist(STORAGE_KEY, this.mappings);
   }
 
@@ -91,9 +135,4 @@ export class SessionStore {
     }
     return removed;
   }
-}
-
-/** Normalize path for cross-platform comparison */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, "/").toLowerCase();
 }

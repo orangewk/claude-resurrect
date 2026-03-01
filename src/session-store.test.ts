@@ -8,6 +8,7 @@ function createMapping(overrides: Partial<SessionMapping> = {}): SessionMapping 
     sessionId: "aaaa-bbbb-cccc-dddd",
     projectPath: "C:\\dev\\my-project",
     lastSeen: Date.now(),
+    status: "active",
     ...overrides,
   };
 }
@@ -68,46 +69,116 @@ describe("SessionStore", () => {
     expect(results).toHaveLength(2);
   });
 
-  it("getRestorable filters by TTL", () => {
+  it("getActive returns only active sessions", () => {
+    const { store } = createStore([
+      createMapping({ terminalName: "A", status: "active" }),
+      createMapping({ terminalName: "B", status: "inactive" }),
+      createMapping({ terminalName: "C", status: "completed" }),
+    ]);
+
+    const active = store.getActive("C:\\dev\\my-project");
+    expect(active).toHaveLength(1);
+    expect(active[0].terminalName).toBe("A");
+  });
+
+  it("getRestorable returns inactive within TTL", () => {
     const now = Date.now();
     const { store } = createStore([
       createMapping({
-        terminalName: "recent",
-        lastSeen: now - 1 * 60 * 60 * 1000, // 1 hour ago
+        terminalName: "recent-inactive",
+        status: "inactive",
+        lastSeen: now - 1 * 60 * 60 * 1000,
       }),
       createMapping({
-        terminalName: "old",
-        lastSeen: now - 48 * 60 * 60 * 1000, // 48 hours ago
+        terminalName: "old-inactive",
+        status: "inactive",
+        lastSeen: now - 48 * 60 * 60 * 1000,
+      }),
+      createMapping({
+        terminalName: "recent-active",
+        status: "active",
+        lastSeen: now - 1 * 60 * 60 * 1000,
+      }),
+      createMapping({
+        terminalName: "recent-completed",
+        status: "completed",
+        lastSeen: now - 1 * 60 * 60 * 1000,
       }),
     ]);
 
     const restorable = store.getRestorable("C:\\dev\\my-project", 24);
     expect(restorable).toHaveLength(1);
-    expect(restorable[0].terminalName).toBe("recent");
+    expect(restorable[0].terminalName).toBe("recent-inactive");
   });
 
-  it("getExpired returns only expired mappings", () => {
+  it("getCompleted returns completed within TTL", () => {
     const now = Date.now();
     const { store } = createStore([
       createMapping({
-        terminalName: "recent",
+        terminalName: "recent-completed",
+        status: "completed",
         lastSeen: now - 1 * 60 * 60 * 1000,
       }),
       createMapping({
-        terminalName: "old",
+        terminalName: "old-completed",
+        status: "completed",
         lastSeen: now - 48 * 60 * 60 * 1000,
+      }),
+      createMapping({
+        terminalName: "recent-active",
+        status: "active",
+        lastSeen: now - 1 * 60 * 60 * 1000,
       }),
     ]);
 
-    const expired = store.getExpired("C:\\dev\\my-project", 24);
-    expect(expired).toHaveLength(1);
-    expect(expired[0].terminalName).toBe("old");
+    const completed = store.getCompleted("C:\\dev\\my-project", 24);
+    expect(completed).toHaveLength(1);
+    expect(completed[0].terminalName).toBe("recent-completed");
   });
 
-  it("removes a mapping", async () => {
-    const { store } = createStore([createMapping()]);
-    await store.remove("Claude #1", "C:\\dev\\my-project");
-    expect(store.getAll()).toHaveLength(0);
+  it("markInactive transitions active to inactive", async () => {
+    const { store } = createStore([
+      createMapping({ status: "active" }),
+    ]);
+
+    await store.markInactive("Claude #1", "C:\\dev\\my-project");
+    expect(store.getAll()[0].status).toBe("inactive");
+  });
+
+  it("markInactive does not regress completed to inactive", async () => {
+    const { store } = createStore([
+      createMapping({ status: "completed" }),
+    ]);
+
+    await store.markInactive("Claude #1", "C:\\dev\\my-project");
+    expect(store.getAll()[0].status).toBe("completed");
+  });
+
+  it("markCompleted transitions active to completed", async () => {
+    const { store } = createStore([
+      createMapping({ status: "active" }),
+    ]);
+
+    await store.markCompleted("Claude #1", "C:\\dev\\my-project");
+    expect(store.getAll()[0].status).toBe("completed");
+  });
+
+  it("markInactive is no-op when mapping not found", async () => {
+    const { store, persisted } = createStore([createMapping()]);
+    await store.markInactive("nonexistent", "C:\\dev\\my-project");
+    expect(persisted.size).toBe(0); // no persist call
+  });
+
+  it("migrates legacy entries without status field", () => {
+    const legacy = {
+      terminalName: "Claude #1",
+      sessionId: "aaa",
+      projectPath: "C:\\dev\\foo",
+      lastSeen: Date.now(),
+    } as SessionMapping; // missing status
+
+    const { store } = createStore([legacy]);
+    expect(store.getAll()[0].status).toBe("inactive");
   });
 
   it("pruneExpired removes old entries and returns count", async () => {

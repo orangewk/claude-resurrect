@@ -26,10 +26,6 @@
         "title": "Claude Resurrect: New Session"
       },
       {
-        "command": "claudeResurrect.resumeAll",
-        "title": "Claude Resurrect: Resume All Sessions"
-      },
-      {
         "command": "claudeResurrect.showMenu",
         "title": "Claude Resurrect: Show Menu"
       }
