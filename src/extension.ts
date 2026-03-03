@@ -23,15 +23,9 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const tracked = store.getByProject(projectPath);
-    const discovered = discoverSessions(projectPath);
-    // Deduplicate: discovered sessions that are already tracked
-    const trackedIds = new Set(tracked.map((m) => m.sessionId));
-    const untracked = discovered.filter((d) => !trackedIds.has(d.sessionId));
     const live = tracked.filter((m) => m.status === "active").length;
-    const idle = tracked.filter((m) => m.status !== "active" && m.status !== "completed").length
-      + untracked.length;
 
-    statusBar.text = `$(terminal) TS Recall: ${live} live · ${idle} idle`;
+    statusBar.text = `$(terminal) TS Recall: ${live} live`;
     statusBar.tooltip = "Terminal Session Recall — this extension only tracks sessions it launched";
     statusBar.show();
   };
