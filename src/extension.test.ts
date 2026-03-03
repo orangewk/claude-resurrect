@@ -77,7 +77,7 @@ describe("activate", () => {
 
     expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith(2, 100);
     expect(mockStatusBarItem.command).toBe("claudeResurrect.showMenu");
-    expect(mockStatusBarItem.text).toBe("$(terminal) Claude: 0 live · 0 idle");
+    expect(mockStatusBarItem.text).toBe("$(terminal) TS Recall: 0 live");
     expect(mockStatusBarItem.show).toHaveBeenCalled();
     expect(mockStatusBarItem.hide).not.toHaveBeenCalled();
   });
