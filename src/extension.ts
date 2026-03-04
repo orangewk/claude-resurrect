@@ -37,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("claudeResurrect.showMenu", async () => {
       if (!projectPath) {
         vscode.window.showWarningMessage(
-          "Claude Resurrect: No workspace folder open.",
+          "Terminal Session Recall: No workspace folder open.",
         );
         return;
       }
@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("claudeResurrect.newSession", async () => {
       if (!projectPath) {
         vscode.window.showWarningMessage(
-          "Claude Resurrect: No workspace folder open.",
+          "Terminal Session Recall: No workspace folder open.",
         );
         return;
       }
@@ -129,7 +129,7 @@ async function startNewSession(
 ): Promise<void> {
   const sessionId = crypto.randomUUID();
   const active = store.getActive(projectPath);
-  const name = `Claude #${active.length + 1}`;
+  const name = `TS Recall #${active.length + 1}`;
 
   // Save to globalState BEFORE creating terminal (crash-safe)
   await store.upsert({
@@ -159,7 +159,7 @@ async function resumeSession(
   onUpdate: () => void,
 ): Promise<void> {
   if (!isValidSessionId(sessionId)) {
-    console.error(`[Claude Resurrect] Invalid session ID rejected: ${sessionId.slice(0, 20)}`);
+    console.error(`[Terminal Session Recall] Invalid session ID rejected: ${sessionId.slice(0, 20)}`);
     return;
   }
 
@@ -170,7 +170,7 @@ async function resumeSession(
     return;
   }
 
-  const terminalName = `Claude: ${displayName.slice(0, 30)}`;
+  const terminalName = `TS Recall: ${displayName.slice(0, 30)}`;
 
   await store.upsert({
     terminalName,
@@ -211,7 +211,7 @@ async function autoRestoreSessions(
     await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate);
   }
 
-  let message = `Claude Resurrect: Restored ${toRestore.length} interrupted session(s).`;
+  let message = `Terminal Session Recall: Restored ${toRestore.length} interrupted session(s).`;
   if (skipped > 0) {
     message += ` ${skipped} older session(s) skipped (limit: ${maxRestore}).`;
   }
@@ -361,7 +361,7 @@ async function showQuickPick(
   }
 
   const selected = await vscode.window.showQuickPick(items, {
-    placeHolder: "Claude Resurrect",
+    placeHolder: "Terminal Session Recall",
   });
 
   if (!selected) return;
@@ -372,7 +372,7 @@ async function showQuickPick(
       break;
     case "continue": {
       const terminal = vscode.window.createTerminal({
-        name: "Claude: continue",
+        name: "TS Recall: continue",
         cwd: projectPath,
         isTransient: true,
       });

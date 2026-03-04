@@ -19,7 +19,7 @@ const vscode = {
     createTerminal: vi.fn(() => ({
       show: vi.fn(),
       sendText: vi.fn(),
-      name: "Claude #1",
+      name: "TS Recall #1",
     })),
     showQuickPick: vi.fn(),
     showInformationMessage: vi.fn(),

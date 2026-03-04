@@ -4,7 +4,7 @@ import type { SessionMapping } from "./types";
 
 function createMapping(overrides: Partial<SessionMapping> = {}): SessionMapping {
   return {
-    terminalName: "Claude #1",
+    terminalName: "TS Recall #1",
     sessionId: "aaaa-bbbb-cccc-dddd",
     projectPath: "C:\\dev\\my-project",
     lastSeen: Date.now(),
@@ -141,7 +141,7 @@ describe("SessionStore", () => {
       createMapping({ status: "active" }),
     ]);
 
-    await store.markInactive("Claude #1", "C:\\dev\\my-project");
+    await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
     expect(store.getAll()[0].status).toBe("inactive");
   });
 
@@ -150,7 +150,7 @@ describe("SessionStore", () => {
       createMapping({ status: "completed" }),
     ]);
 
-    await store.markInactive("Claude #1", "C:\\dev\\my-project");
+    await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
     expect(store.getAll()[0].status).toBe("completed");
   });
 
@@ -159,7 +159,7 @@ describe("SessionStore", () => {
       createMapping({ status: "active" }),
     ]);
 
-    await store.markCompleted("Claude #1", "C:\\dev\\my-project");
+    await store.markCompleted("TS Recall #1", "C:\\dev\\my-project");
     expect(store.getAll()[0].status).toBe("completed");
   });
 
@@ -171,7 +171,7 @@ describe("SessionStore", () => {
 
   it("migrates legacy entries without status field", () => {
     const legacy = {
-      terminalName: "Claude #1",
+      terminalName: "TS Recall #1",
       sessionId: "aaa",
       projectPath: "C:\\dev\\foo",
       lastSeen: Date.now(),
