@@ -67,10 +67,10 @@ export class SessionStore {
     );
   }
 
-  /** Add or update a mapping */
+  /** Add or update a mapping (keyed by sessionId + projectPath) */
   async upsert(mapping: SessionMapping): Promise<void> {
     const idx = this.mappings.findIndex(
-      (m) => m.terminalName === mapping.terminalName &&
+      (m) => m.sessionId === mapping.sessionId &&
         normalizePath(m.projectPath) === normalizePath(mapping.projectPath),
     );
     if (idx >= 0) {

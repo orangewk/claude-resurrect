@@ -41,15 +41,15 @@ describe("SessionStore", () => {
     expect(store.getAll()[0]).toEqual(mapping);
   });
 
-  it("updates existing mapping by terminalName + projectPath", async () => {
-    const original = createMapping({ sessionId: "old-id" });
+  it("updates existing mapping by sessionId + projectPath", async () => {
+    const original = createMapping({ terminalName: "TS Recall #1" });
     const { store } = createStore([original]);
 
-    const updated = createMapping({ sessionId: "new-id" });
+    const updated = createMapping({ terminalName: "TS Recall: new name" });
     await store.upsert(updated);
 
     expect(store.getAll()).toHaveLength(1);
-    expect(store.getAll()[0].sessionId).toBe("new-id");
+    expect(store.getAll()[0].terminalName).toBe("TS Recall: new name");
   });
 
   it("persists on upsert", async () => {
