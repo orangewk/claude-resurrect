@@ -3,7 +3,7 @@
 ## 前提
 
 - Publisher: `orange-creatives`
-- PAT: `.env` ファイルの `VSCE_PAT` に保存済み（`.gitignore` 済み）
+- PAT: `.vsce-pat` ファイルの `VSCE_PAT` に保存済み（`.gitignore` 済み）
 - PAT 期限切れ時の再発行: Azure DevOps → User Settings → Personal Access Tokens（スコープ: Marketplace → Publish）
 
 ## 手順
@@ -22,9 +22,9 @@ git add package.json
 git commit -m "chore: bump version to 0.1.5"
 git push origin main
 
-# 4. ビルド & 公開（.env から PAT を読み込む）
+# 4. ビルド & 公開（.vsce-pat から PAT を読み込む）
 npm run compile
-source .env
+source .vsce-pat
 npx @vscode/vsce publish --pat "$VSCE_PAT"
 ```
 
