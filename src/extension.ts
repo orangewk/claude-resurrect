@@ -205,13 +205,22 @@ async function autoRestoreSessions(
   const toRestore = active.slice(0, maxRestore);
   const skipped = active.length - toRestore.length;
 
+  let restored = 0;
   for (const mapping of toRestore) {
+    // Skip if the terminal already exists (e.g. detach → attach from another window)
+    const alreadyExists = vscode.window.terminals.some(
+      (t) => t.name === mapping.terminalName,
+    );
+    if (alreadyExists) continue;
+
     const info = readSessionDisplayInfo(projectPath, mapping.sessionId);
     const displayName = resolveDisplayName(info, mapping.sessionId);
     await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate);
+    restored++;
   }
 
-  let message = `Terminal Session Recall: Restored ${toRestore.length} interrupted session(s).`;
+  if (restored === 0) return;
+  let message = `Terminal Session Recall: Restored ${restored} interrupted session(s).`;
   if (skipped > 0) {
     message += ` ${skipped} older session(s) skipped (limit: ${maxRestore}).`;
   }
