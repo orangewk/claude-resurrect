@@ -11,3 +11,7 @@ esbuild.mjs
 CLAUDE.md
 .vsce-pat
 .env
+art/icon-draft-*
+art/icon-new.png
+art/icon-old.png
+art/icon-v2.png
