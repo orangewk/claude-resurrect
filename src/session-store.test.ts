@@ -1,6 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionStore } from "./session-store";
 import type { SessionMapping } from "./types";
+
+// Mock process-check module
+vi.mock("./process-check", () => ({
+  isProcessAlive: vi.fn(),
+}));
+
+import { isProcessAlive } from "./process-check";
+const mockIsProcessAlive = vi.mocked(isProcessAlive);
 
 function createMapping(overrides: Partial<SessionMapping> = {}): SessionMapping {
   return {
@@ -28,6 +36,10 @@ function createStore(initial: SessionMapping[] = []): {
 }
 
 describe("SessionStore", () => {
+  beforeEach(() => {
+    mockIsProcessAlive.mockReset();
+  });
+
   it("starts empty", () => {
     const { store } = createStore();
     expect(store.getAll()).toEqual([]);
@@ -179,6 +191,65 @@ describe("SessionStore", () => {
 
     const { store } = createStore([legacy]);
     expect(store.getAll()[0].status).toBe("inactive");
+  });
+
+  describe("pruneDeadProcesses", () => {
+    it("marks dead processes as inactive", async () => {
+      mockIsProcessAlive.mockResolvedValue(false);
+      const { store } = createStore([
+        createMapping({ terminalName: "A", status: "active", pid: 1234, pidCreatedAt: Date.now() }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\my-project");
+      expect(pruned).toBe(1);
+      expect(store.getAll()[0].status).toBe("inactive");
+    });
+
+    it("leaves alive processes as active", async () => {
+      mockIsProcessAlive.mockResolvedValue(true);
+      const { store } = createStore([
+        createMapping({ terminalName: "A", status: "active", pid: 1234, pidCreatedAt: Date.now() }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\my-project");
+      expect(pruned).toBe(0);
+      expect(store.getAll()[0].status).toBe("active");
+    });
+
+    it("skips sessions without pid (safe side)", async () => {
+      const { store } = createStore([
+        createMapping({ terminalName: "A", status: "active" }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\my-project");
+      expect(pruned).toBe(0);
+      expect(store.getAll()[0].status).toBe("active");
+      expect(mockIsProcessAlive).not.toHaveBeenCalled();
+    });
+
+    it("leaves process as active when check returns undefined", async () => {
+      mockIsProcessAlive.mockResolvedValue(undefined);
+      const { store } = createStore([
+        createMapping({ terminalName: "A", status: "active", pid: 1234, pidCreatedAt: Date.now() }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\my-project");
+      expect(pruned).toBe(0);
+      expect(store.getAll()[0].status).toBe("active");
+    });
+
+    it("only prunes sessions for the given project", async () => {
+      mockIsProcessAlive.mockResolvedValue(false);
+      const { store } = createStore([
+        createMapping({ terminalName: "A", status: "active", pid: 1234, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-a" }),
+        createMapping({ terminalName: "B", status: "active", pid: 5678, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-b" }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\project-a");
+      expect(pruned).toBe(1);
+      expect(store.getAll().find(m => m.terminalName === "A")!.status).toBe("inactive");
+      expect(store.getAll().find(m => m.terminalName === "B")!.status).toBe("active");
+    });
   });
 
   it("pruneExpired removes old entries and returns count", async () => {

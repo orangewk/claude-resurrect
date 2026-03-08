@@ -1,5 +1,6 @@
 import type { SessionMapping } from "./types";
 import { normalizePath } from "./normalize-path";
+import { isProcessAlive } from "./process-check";
 
 const STORAGE_KEY = "claudeResurrectMappings";
 
@@ -122,6 +123,22 @@ export class SessionStore {
       ...this.mappings.slice(idx + 1),
     ];
     await this.persist(STORAGE_KEY, this.mappings);
+  }
+
+  /** Mark active sessions whose OS process has died as inactive */
+  async pruneDeadProcesses(projectPath: string): Promise<number> {
+    const actives = this.getActive(projectPath);
+    let pruned = 0;
+    for (const m of actives) {
+      if (m.pid == null) continue; // no pid recorded — skip (safe side)
+      const alive = await isProcessAlive(m.pid, m.pidCreatedAt ?? 0);
+      if (alive === false) {
+        await this.markInactive(m.terminalName, m.projectPath);
+        pruned++;
+      }
+      // alive === true or undefined → leave as active
+    }
+    return pruned;
   }
 
   /** Remove all expired mappings */
