@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Prune dead processes on startup — sessions whose OS process has died are marked inactive instead of resurrecting as zombies
+- Record terminal PID and creation time for liveness verification (PID reuse safe)
+- Add `Dump State (Debug)` command to inspect all session mappings in Output Channel
+
 ## 1.0.0
 
 - Focus active terminal from QuickPick instead of opening a duplicate
