@@ -81,9 +81,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // 14日（336時間）超過のマッピングを globalState から削除
     void store.pruneExpired(336);
 
-    if (autoRestore) {
-      void autoRestoreSessions(store, path, updateStatusBar);
-    }
+    // Prune sessions whose OS process has died, then auto-restore
+    void store.pruneDeadProcesses(path).then(() => {
+      updateStatusBar();
+      if (autoRestore) {
+        void autoRestoreSessions(store, path, updateStatusBar);
+      }
+    });
   };
 
   if (projectPath) {
@@ -132,13 +136,14 @@ async function startNewSession(
   const name = `TS Recall #${active.length + 1}`;
 
   // Save to globalState BEFORE creating terminal (crash-safe)
-  await store.upsert({
+  const mapping: SessionMapping = {
     terminalName: name,
     sessionId,
     projectPath,
     lastSeen: Date.now(),
     status: "active",
-  });
+  };
+  await store.upsert(mapping);
 
   const terminal = vscode.window.createTerminal({
     name,
@@ -147,6 +152,12 @@ async function startNewSession(
   });
   terminal.show();
   terminal.sendText(`${getClaudePath()} --session-id ${sessionId}`);
+
+  // Record PID for liveness checking on next startup
+  const pid = await terminal.processId;
+  if (pid != null) {
+    await store.upsert({ ...mapping, pid, pidCreatedAt: Date.now() });
+  }
 
   onUpdate();
 }
@@ -172,13 +183,14 @@ async function resumeSession(
 
   const terminalName = `TS Recall: ${displayName.slice(0, 30)}`;
 
-  await store.upsert({
+  const mapping: SessionMapping = {
     terminalName,
     sessionId,
     projectPath,
     lastSeen: Date.now(),
     status: "active",
-  });
+  };
+  await store.upsert(mapping);
 
   const terminal = vscode.window.createTerminal({
     name: terminalName,
@@ -187,6 +199,12 @@ async function resumeSession(
   });
   terminal.sendText(`${getClaudePath()} --resume ${sessionId}`);
   terminal.show();
+
+  // Record PID for liveness checking on next startup
+  const pid = await terminal.processId;
+  if (pid != null) {
+    await store.upsert({ ...mapping, pid, pidCreatedAt: Date.now() });
+  }
 
   onUpdate();
 }

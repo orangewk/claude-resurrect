@@ -7,6 +7,8 @@ export interface SessionMapping {
   readonly projectPath: string;
   readonly lastSeen: number; // Unix ms timestamp
   readonly status: SessionStatus;
+  readonly pid?: number;
+  readonly pidCreatedAt?: number; // Unix ms — approximate process creation time
 }
 
 /** Entry from ~/.claude/history.jsonl */
