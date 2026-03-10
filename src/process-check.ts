@@ -25,22 +25,22 @@ async function isProcessAliveWin32(
   toleranceMs: number,
 ): Promise<boolean | undefined> {
   try {
-    const stdout = await execFileAsync("wmic", [
-      "process",
-      "where",
-      `ProcessId=${pid}`,
-      "get",
-      "CreationDate",
-      "/value",
+    // PowerShell: get process start time as Unix ms (wmic removed in Win11)
+    const script = `try { (Get-Process -Id ${pid}).StartTime.ToUniversalTime().Subtract([datetime]'1970-01-01').TotalMilliseconds } catch { 'NOT_FOUND' }`;
+    const stdout = await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      script,
     ]);
 
-    const match = stdout.match(/CreationDate=(\d{14}\.\d+)([+-]\d+)/);
-    if (!match) return false; // process not found
+    const trimmed = stdout.trim();
+    if (!trimmed || trimmed === "NOT_FOUND") return false;
 
-    const creationDate = parseWmicDate(match[1]);
-    if (creationDate == null) return undefined;
+    const startTimeMs = Number(trimmed);
+    if (isNaN(startTimeMs)) return undefined;
 
-    return Math.abs(creationDate - expectedCreatedAt) <= toleranceMs;
+    return Math.abs(startTimeMs - expectedCreatedAt) <= toleranceMs;
   } catch {
     return undefined;
   }
@@ -67,27 +67,6 @@ async function isProcessAliveUnix(
   }
 }
 
-/** Parse WMIC CreationDate format: 20260307091212.123456 → Unix ms */
-export function parseWmicDate(wmicDate: string): number | undefined {
-  // Format: YYYYMMDDHHmmss.ffffff
-  const m = wmicDate.match(
-    /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.(\d+)$/,
-  );
-  if (!m) return undefined;
-
-  const [, year, month, day, hour, min, sec, frac] = m;
-  // Use local time (WMIC reports local time)
-  const date = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(min),
-    Number(sec),
-    Number(frac.slice(0, 3)), // ms from microseconds
-  );
-  return date.getTime();
-}
 
 function execFileAsync(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
