@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Fix: Windows 11 でゾンビセッションが残り続ける問題を修正（`wmic` → PowerShell に差し替え）
+
 ## 1.0.2
 
 - Prune dead processes on startup — sessions whose OS process has died are marked inactive instead of resurrecting as zombies
