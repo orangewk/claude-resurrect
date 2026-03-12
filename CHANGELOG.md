@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+- Session presets: save pre-configured session templates for one-click launch from the QuickPick menu
+- Webview preset manager: dedicated UI panel for creating, editing, and removing presets (`Manage Presets` command)
+- Auto-launch presets on VS Code startup via the `autoLaunch` flag
+- Adopt running sessions: attach the extension to an already-running Claude terminal and auto-create a preset
+- Configurable CLI arguments (`claudeArgs`) passed to every Claude session — editable from Settings or the preset manager
+- Per-preset CLI argument overrides
+- Custom terminal rename with automatic preset sync
+- `userName` setting to run Claude as a different system user (e.g. for `--dangerously-skip-permissions` on non-root)
+- Per-preset `userName` override
+- Configurable `shellWrapper` template with `{cmd}`, `{cwd}`, `{user}` placeholders — supports `su`, `sudo`, or any custom wrapper
+- Per-preset `shellWrapper` override
+
 ## 1.0.3
 
 - Fix: Windows 11 でゾンビセッションが残り続ける問題を修正（`wmic` → PowerShell に差し替え）

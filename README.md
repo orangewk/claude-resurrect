@@ -9,6 +9,12 @@
 - Status bar shows live and idle session counts for the current project
 - QuickPick session manager: start new sessions, resume interrupted or completed sessions
 - Automatically restores interrupted sessions when VSCode restarts
+- **Session presets** — save pre-configured session templates for one-click launch
+- **Preset manager** — dedicated Webview panel for creating, editing, and removing presets
+- **Auto-launch** — presets with `autoLaunch` enabled start automatically on VS Code startup
+- **Adopt running sessions** — attach the extension to an already-running Claude terminal
+- **Configurable CLI arguments** — global `claudeArgs` with per-preset overrides
+- **User switching** — run Claude as a different system user via `userName` and a configurable `shellWrapper`
 
 ## Requirements
 
@@ -21,6 +27,10 @@
 | claudeResurrect.autoRestore | true | Automatically restore interrupted sessions on startup |
 | claudeResurrect.autoRestoreMaxAge | 24 | Maximum age (hours) of sessions to auto-restore |
 | claudeResurrect.claudePath | "claude" | Path to the Claude CLI executable |
+| claudeResurrect.claudeArgs | [] | Extra CLI arguments passed to every Claude session (e.g. `--model`, `--verbose`) |
+| claudeResurrect.userName | "" | System user name for running Claude sessions. Used as terminal name prefix and in `shellWrapper` `{user}` placeholder |
+| claudeResurrect.shellWrapper | `su - {user} -c 'cd {cwd} && {cmd}'` | Shell command template when `userName` is set. Placeholders: `{cmd}`, `{cwd}`, `{user}` |
+| claudeResurrect.sessionPresets | [] | Pre-configured session templates (managed via the Preset Manager UI) |
 
 ## Limitations
 

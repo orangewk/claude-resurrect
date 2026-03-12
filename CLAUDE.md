@@ -32,6 +32,7 @@ npm run package    # .vsix パッケージ作成
 | session-store.ts | Yes | persist コールバックで DI 済み |
 | normalize-path.ts | Yes | 純粋関数 |
 | extension.ts | No | vscode API 依存。F5 デバッグで検証 |
+| preset-webview.ts | No | vscode Webview API 依存。F5 デバッグで検証 |
 
 ## コーディングスタイル
 

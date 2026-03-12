@@ -2,7 +2,7 @@
   "name": "terminal-session-recall",
   "displayName": "Terminal Session Recall",
   "description": "Automatically resume Claude Code CLI sessions after VSCode restart",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "publisher": "orange-creatives",
   "license": "MIT",
   "icon": "art/icon.png",
