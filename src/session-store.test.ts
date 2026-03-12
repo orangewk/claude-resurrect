@@ -148,37 +148,116 @@ describe("SessionStore", () => {
     expect(completed[0].terminalName).toBe("recent-completed");
   });
 
-  it("markInactive transitions active to inactive", async () => {
-    const { store } = createStore([
-      createMapping({ status: "active" }),
-    ]);
+  describe("markInactiveBySessionId / markCompletedBySessionId", () => {
+    it("markInactiveBySessionId transitions active to inactive", async () => {
+      const { store } = createStore([
+        createMapping({ sessionId: "sess-1", status: "active" }),
+      ]);
 
-    await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
-    expect(store.getAll()[0].status).toBe("inactive");
+      await store.markInactiveBySessionId("sess-1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("inactive");
+    });
+
+    it("markInactiveBySessionId does not regress completed to inactive", async () => {
+      const { store } = createStore([
+        createMapping({ sessionId: "sess-1", status: "completed" }),
+      ]);
+
+      await store.markInactiveBySessionId("sess-1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("completed");
+    });
+
+    it("markCompletedBySessionId transitions active to completed", async () => {
+      const { store } = createStore([
+        createMapping({ sessionId: "sess-1", status: "active" }),
+      ]);
+
+      await store.markCompletedBySessionId("sess-1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("completed");
+    });
+
+    it("markInactiveBySessionId is no-op when sessionId not found", async () => {
+      const { store, persisted } = createStore([createMapping()]);
+      await store.markInactiveBySessionId("nonexistent", "C:\\dev\\my-project");
+      expect(persisted.size).toBe(0);
+    });
+
+    it("sessionId correctly targets the right entry among duplicates with same terminalName", async () => {
+      // Ghost bug reproduction: two entries with same terminalName "TS Recall #1"
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-old", status: "inactive" }),
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-new", status: "active" }),
+      ]);
+
+      // Mark the NEW active session as completed by sessionId
+      await store.markCompletedBySessionId("sess-new", "C:\\dev\\my-project");
+
+      const all = store.getAll();
+      expect(all.find((m) => m.sessionId === "sess-old")!.status).toBe("inactive");
+      expect(all.find((m) => m.sessionId === "sess-new")!.status).toBe("completed");
+    });
   });
 
-  it("markInactive does not regress completed to inactive", async () => {
-    const { store } = createStore([
-      createMapping({ status: "completed" }),
-    ]);
+  describe("markInactive / markCompleted (terminalName fallback)", () => {
+    it("markInactive transitions active to inactive", async () => {
+      const { store } = createStore([
+        createMapping({ status: "active" }),
+      ]);
 
-    await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
-    expect(store.getAll()[0].status).toBe("completed");
-  });
+      await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("inactive");
+    });
 
-  it("markCompleted transitions active to completed", async () => {
-    const { store } = createStore([
-      createMapping({ status: "active" }),
-    ]);
+    it("markInactive does not regress completed to inactive", async () => {
+      const { store } = createStore([
+        createMapping({ status: "completed" }),
+      ]);
 
-    await store.markCompleted("TS Recall #1", "C:\\dev\\my-project");
-    expect(store.getAll()[0].status).toBe("completed");
-  });
+      await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("completed");
+    });
 
-  it("markInactive is no-op when mapping not found", async () => {
-    const { store, persisted } = createStore([createMapping()]);
-    await store.markInactive("nonexistent", "C:\\dev\\my-project");
-    expect(persisted.size).toBe(0); // no persist call
+    it("markCompleted transitions active to completed", async () => {
+      const { store } = createStore([
+        createMapping({ status: "active" }),
+      ]);
+
+      await store.markCompleted("TS Recall #1", "C:\\dev\\my-project");
+      expect(store.getAll()[0].status).toBe("completed");
+    });
+
+    it("markInactive is no-op when mapping not found", async () => {
+      const { store, persisted } = createStore([createMapping()]);
+      await store.markInactive("nonexistent", "C:\\dev\\my-project");
+      expect(persisted.size).toBe(0); // no persist call
+    });
+
+    it("markInactive prefers active entry when duplicate terminalNames exist", async () => {
+      // Active-priority match: should target the active entry, not the older inactive one
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-old", status: "inactive" }),
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-new", status: "active" }),
+      ]);
+
+      await store.markInactive("TS Recall #1", "C:\\dev\\my-project");
+
+      const all = store.getAll();
+      expect(all.find((m) => m.sessionId === "sess-old")!.status).toBe("inactive");
+      expect(all.find((m) => m.sessionId === "sess-new")!.status).toBe("inactive");
+    });
+
+    it("markCompleted prefers active entry when duplicate terminalNames exist", async () => {
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-old", status: "inactive" }),
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-new", status: "active" }),
+      ]);
+
+      await store.markCompleted("TS Recall #1", "C:\\dev\\my-project");
+
+      const all = store.getAll();
+      expect(all.find((m) => m.sessionId === "sess-old")!.status).toBe("inactive");
+      expect(all.find((m) => m.sessionId === "sess-new")!.status).toBe("completed");
+    });
   });
 
   it("migrates legacy entries without status field", () => {
@@ -241,14 +320,27 @@ describe("SessionStore", () => {
     it("only prunes sessions for the given project", async () => {
       mockIsProcessAlive.mockResolvedValue(false);
       const { store } = createStore([
-        createMapping({ terminalName: "A", status: "active", pid: 1234, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-a" }),
-        createMapping({ terminalName: "B", status: "active", pid: 5678, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-b" }),
+        createMapping({ terminalName: "A", sessionId: "sess-a", status: "active", pid: 1234, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-a" }),
+        createMapping({ terminalName: "B", sessionId: "sess-b", status: "active", pid: 5678, pidCreatedAt: Date.now(), projectPath: "C:\\dev\\project-b" }),
       ]);
 
       const pruned = await store.pruneDeadProcesses("C:\\dev\\project-a");
       expect(pruned).toBe(1);
-      expect(store.getAll().find(m => m.terminalName === "A")!.status).toBe("inactive");
-      expect(store.getAll().find(m => m.terminalName === "B")!.status).toBe("active");
+      expect(store.getAll().find(m => m.sessionId === "sess-a")!.status).toBe("inactive");
+      expect(store.getAll().find(m => m.sessionId === "sess-b")!.status).toBe("active");
+    });
+
+    it("uses sessionId to prune correct entry among duplicate terminalNames", async () => {
+      mockIsProcessAlive.mockImplementation(async (pid: number) => pid === 1111 ? false : true);
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-dead", status: "active", pid: 1111, pidCreatedAt: Date.now() }),
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-alive", status: "active", pid: 2222, pidCreatedAt: Date.now() }),
+      ]);
+
+      const pruned = await store.pruneDeadProcesses("C:\\dev\\my-project");
+      expect(pruned).toBe(1);
+      expect(store.getAll().find(m => m.sessionId === "sess-dead")!.status).toBe("inactive");
+      expect(store.getAll().find(m => m.sessionId === "sess-alive")!.status).toBe("active");
     });
   });
 

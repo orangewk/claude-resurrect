@@ -7,6 +7,7 @@ import type { DiscoveredSession } from "./claude-dir";
 
 export function activate(context: vscode.ExtensionContext): void {
   const store = SessionStore.fromState(context.globalState);
+  const terminalSessionMap = new Map<vscode.Terminal, string>();
   let projectPath = getProjectPath();
 
   // --- Status Bar ---
@@ -41,7 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         return;
       }
-      await showQuickPick(store, projectPath, updateStatusBar);
+      await showQuickPick(store, projectPath, updateStatusBar, terminalSessionMap);
     }),
 
     vscode.commands.registerCommand("claudeResurrect.dumpState", () => {
@@ -68,7 +69,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         return;
       }
-      await startNewSession(store, projectPath, updateStatusBar);
+      await startNewSession(store, projectPath, updateStatusBar, terminalSessionMap);
     }),
   );
 
@@ -78,14 +79,24 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!projectPath) return;
 
       const reason = terminal.exitStatus?.reason;
+      const sessionId = terminalSessionMap.get(terminal);
+
       if (reason === vscode.TerminalExitReason.Process) {
-        // CLI exited on its own (user typed exit, /exit, etc.) → completed
-        void store.markCompleted(terminal.name, projectPath);
+        if (sessionId) {
+          void store.markCompletedBySessionId(sessionId, projectPath);
+        } else {
+          // Fallback: after reload/restart, Map is empty → use terminalName with active-priority
+          void store.markCompleted(terminal.name, projectPath);
+        }
       } else {
-        // User closed terminal, VSCode shutdown, or unknown → restorable
-        // Note: Extension-disposed terminals also land here (intentional)
-        void store.markInactive(terminal.name, projectPath);
+        if (sessionId) {
+          void store.markInactiveBySessionId(sessionId, projectPath);
+        } else {
+          void store.markInactive(terminal.name, projectPath);
+        }
       }
+
+      terminalSessionMap.delete(terminal);
       updateStatusBar();
     }),
   );
@@ -102,7 +113,7 @@ export function activate(context: vscode.ExtensionContext): void {
     void store.pruneDeadProcesses(path).then(() => {
       updateStatusBar();
       if (autoRestore) {
-        void autoRestoreSessions(store, path, updateStatusBar);
+        void autoRestoreSessions(store, path, updateStatusBar, terminalSessionMap);
       }
     });
   };
@@ -147,6 +158,7 @@ async function startNewSession(
   store: SessionStore,
   projectPath: string,
   onUpdate: () => void,
+  terminalSessionMap: Map<vscode.Terminal, string>,
 ): Promise<void> {
   const sessionId = crypto.randomUUID();
   const active = store.getActive(projectPath);
@@ -169,6 +181,7 @@ async function startNewSession(
   });
   terminal.show();
   terminal.sendText(`${getClaudePath()} --session-id ${sessionId}`);
+  terminalSessionMap.set(terminal, sessionId);
 
   // Record PID for liveness checking on next startup
   const pid = await terminal.processId;
@@ -185,6 +198,7 @@ async function resumeSession(
   displayName: string,
   projectPath: string,
   onUpdate: () => void,
+  terminalSessionMap: Map<vscode.Terminal, string>,
 ): Promise<void> {
   if (!isValidSessionId(sessionId)) {
     console.error(`[Terminal Session Recall] Invalid session ID rejected: ${sessionId.slice(0, 20)}`);
@@ -216,6 +230,7 @@ async function resumeSession(
   });
   terminal.sendText(`${getClaudePath()} --resume ${sessionId}`);
   terminal.show();
+  terminalSessionMap.set(terminal, sessionId);
 
   // Record PID for liveness checking on next startup
   const pid = await terminal.processId;
@@ -231,6 +246,7 @@ async function autoRestoreSessions(
   store: SessionStore,
   projectPath: string,
   onUpdate: () => void,
+  terminalSessionMap: Map<vscode.Terminal, string>,
 ): Promise<void> {
   const config = vscode.workspace.getConfiguration("claudeResurrect");
   const maxRestore = config.get<number>("maxAutoRestore", 10);
@@ -250,7 +266,7 @@ async function autoRestoreSessions(
 
     const info = readSessionDisplayInfo(projectPath, mapping.sessionId);
     const displayName = resolveDisplayName(info, mapping.sessionId);
-    await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate);
+    await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate, terminalSessionMap);
     restored++;
   }
 
@@ -266,6 +282,7 @@ async function showQuickPick(
   store: SessionStore,
   projectPath: string,
   onUpdate: () => void,
+  terminalSessionMap: Map<vscode.Terminal, string>,
 ): Promise<void> {
   const QUICK_PICK_LIMIT = 20;
 
@@ -415,7 +432,7 @@ async function showQuickPick(
 
   switch (selected.action) {
     case "new":
-      await startNewSession(store, projectPath, onUpdate);
+      await startNewSession(store, projectPath, onUpdate, terminalSessionMap);
       break;
     case "continue": {
       const terminal = vscode.window.createTerminal({
@@ -451,6 +468,7 @@ async function showQuickPick(
           resolveDisplayName(resumeInfo, m.sessionId),
           projectPath,
           onUpdate,
+          terminalSessionMap,
         );
       }
       break;
@@ -458,7 +476,7 @@ async function showQuickPick(
       if (selected.discovered) {
         const d = selected.discovered;
         const displayName = d.customTitle ?? d.firstPrompt;
-        await resumeSession(store, d.sessionId, displayName, projectPath, onUpdate);
+        await resumeSession(store, d.sessionId, displayName, projectPath, onUpdate, terminalSessionMap);
       }
       break;
   }

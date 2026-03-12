@@ -86,11 +86,11 @@ export class SessionStore {
     await this.persist(STORAGE_KEY, this.mappings);
   }
 
-  /** Mark a session as inactive (terminal closed by user) */
-  async markInactive(terminalName: string, projectPath: string): Promise<void> {
+  /** Mark a session as inactive by sessionId (primary path) */
+  async markInactiveBySessionId(sessionId: string, projectPath: string): Promise<void> {
     const normalized = normalizePath(projectPath);
     const idx = this.mappings.findIndex(
-      (m) => m.terminalName === terminalName &&
+      (m) => m.sessionId === sessionId &&
         normalizePath(m.projectPath) === normalized,
     );
     if (idx < 0) return;
@@ -107,13 +107,69 @@ export class SessionStore {
     await this.persist(STORAGE_KEY, this.mappings);
   }
 
-  /** Mark a session as completed (CLI exited normally) */
-  async markCompleted(terminalName: string, projectPath: string): Promise<void> {
+  /** Mark a session as completed by sessionId (primary path) */
+  async markCompletedBySessionId(sessionId: string, projectPath: string): Promise<void> {
     const normalized = normalizePath(projectPath);
     const idx = this.mappings.findIndex(
-      (m) => m.terminalName === terminalName &&
+      (m) => m.sessionId === sessionId &&
         normalizePath(m.projectPath) === normalized,
     );
+    if (idx < 0) return;
+
+    const existing = this.mappings[idx];
+    this.mappings = [
+      ...this.mappings.slice(0, idx),
+      { ...existing, status: "completed", lastSeen: Date.now() },
+      ...this.mappings.slice(idx + 1),
+    ];
+    await this.persist(STORAGE_KEY, this.mappings);
+  }
+
+  /** Mark a session as inactive by terminalName (fallback for reload/restart) */
+  async markInactive(terminalName: string, projectPath: string): Promise<void> {
+    const normalized = normalizePath(projectPath);
+    // Active-priority match: prefer active entries over inactive/completed
+    // to avoid the ghost terminal bug with duplicate terminalNames
+    let idx = this.mappings.findIndex(
+      (m) => m.terminalName === terminalName &&
+        normalizePath(m.projectPath) === normalized &&
+        m.status === "active",
+    );
+    if (idx < 0) {
+      idx = this.mappings.findIndex(
+        (m) => m.terminalName === terminalName &&
+          normalizePath(m.projectPath) === normalized,
+      );
+    }
+    if (idx < 0) return;
+
+    const existing = this.mappings[idx];
+    // completed is a terminal state — don't regress to inactive
+    if (existing.status === "completed") return;
+
+    this.mappings = [
+      ...this.mappings.slice(0, idx),
+      { ...existing, status: "inactive", lastSeen: Date.now() },
+      ...this.mappings.slice(idx + 1),
+    ];
+    await this.persist(STORAGE_KEY, this.mappings);
+  }
+
+  /** Mark a session as completed by terminalName (fallback for reload/restart) */
+  async markCompleted(terminalName: string, projectPath: string): Promise<void> {
+    const normalized = normalizePath(projectPath);
+    // Active-priority match: prefer active entries over inactive/completed
+    let idx = this.mappings.findIndex(
+      (m) => m.terminalName === terminalName &&
+        normalizePath(m.projectPath) === normalized &&
+        m.status === "active",
+    );
+    if (idx < 0) {
+      idx = this.mappings.findIndex(
+        (m) => m.terminalName === terminalName &&
+          normalizePath(m.projectPath) === normalized,
+      );
+    }
     if (idx < 0) return;
 
     const existing = this.mappings[idx];
@@ -133,7 +189,7 @@ export class SessionStore {
       if (m.pid == null) continue; // no pid recorded — skip (safe side)
       const alive = await isProcessAlive(m.pid, m.pidCreatedAt ?? 0);
       if (alive === false) {
-        await this.markInactive(m.terminalName, m.projectPath);
+        await this.markInactiveBySessionId(m.sessionId, m.projectPath);
         pruned++;
       }
       // alive === true or undefined → leave as active
