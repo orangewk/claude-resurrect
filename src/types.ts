@@ -19,3 +19,15 @@ export interface HistoryEntry {
   readonly project: string; // absolute path
   readonly sessionId: string; // UUID v4
 }
+
+/** Pre-configured session template for one-click launch */
+export interface SessionPreset {
+  readonly label: string;
+  readonly cwd: string;
+  readonly sessionId?: string;
+  readonly args?: readonly string[];
+  readonly terminalName?: string;
+  readonly autoLaunch?: boolean;
+  readonly userName?: string;
+  readonly shellWrapper?: string;
+}

@@ -42,6 +42,42 @@
       {
         "command": "claudeResurrect.dumpState",
         "title": "Claude Resurrect: Dump State (Debug)"
+      },
+      {
+        "command": "claudeResurrect.editClaudeArgs",
+        "title": "Claude Resurrect: Edit CLI Arguments"
+      },
+      {
+        "command": "claudeResurrect.editUserName",
+        "title": "Claude Resurrect: Edit User Name"
+      },
+      {
+        "command": "claudeResurrect.renameTerminal",
+        "title": "Claude Resurrect: Rename Terminal"
+      },
+      {
+        "command": "claudeResurrect.adoptSession",
+        "title": "Claude Resurrect: Adopt Running Session"
+      },
+      {
+        "command": "claudeResurrect.addPreset",
+        "title": "Claude Resurrect: Add Session Preset"
+      },
+      {
+        "command": "claudeResurrect.editPreset",
+        "title": "Claude Resurrect: Edit Session Preset"
+      },
+      {
+        "command": "claudeResurrect.removePreset",
+        "title": "Claude Resurrect: Remove Session Preset"
+      },
+      {
+        "command": "claudeResurrect.launchPreset",
+        "title": "Claude Resurrect: Launch Session Preset"
+      },
+      {
+        "command": "claudeResurrect.managePresets",
+        "title": "Claude Resurrect: Manage Presets"
       }
     ],
     "configuration": {
@@ -61,6 +97,69 @@
           "type": "string",
           "default": "claude",
           "description": "Path to the Claude CLI executable"
+        },
+        "claudeResurrect.claudeArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra CLI arguments passed to every Claude session (e.g. --model, --verbose)"
+        },
+        "claudeResurrect.userName": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "System user name for running Claude sessions. Used as terminal name prefix and in shellWrapper {user} placeholder."
+        },
+        "claudeResurrect.shellWrapper": {
+          "type": "string",
+          "default": "su - {user} -c 'cd {cwd} && {cmd}'",
+          "scope": "window",
+          "description": "Shell command template for running Claude as a different user. Placeholders: {cmd} = claude command, {cwd} = working directory, {user} = userName. Only used when userName is set. Leave empty to run commands directly."
+        },
+        "claudeResurrect.sessionPresets": {
+          "type": "array",
+          "default": [],
+          "description": "Pre-configured session templates for one-click launch",
+          "items": {
+            "type": "object",
+            "required": ["label", "cwd"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "Display name in QuickPick menu"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the terminal"
+              },
+              "sessionId": {
+                "type": "string",
+                "description": "Session ID to resume (--resume). Omit to start a new session"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Extra CLI flags for this preset"
+              },
+              "terminalName": {
+                "type": "string",
+                "description": "Custom terminal tab name (defaults to label)"
+              },
+              "autoLaunch": {
+                "type": "boolean",
+                "default": false,
+                "description": "Automatically launch this preset on VS Code startup"
+              },
+              "userName": {
+                "type": "string",
+                "description": "System user to run as. Overrides global userName for this preset"
+              },
+              "shellWrapper": {
+                "type": "string",
+                "description": "Shell wrapper template. Overrides global shellWrapper for this preset. Placeholders: {cmd}, {cwd}, {user}"
+              }
+            }
+          }
         }
       }
     }
