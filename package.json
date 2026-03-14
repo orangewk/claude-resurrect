@@ -44,32 +44,8 @@
         "title": "Claude Resurrect: Dump State (Debug)"
       },
       {
-        "command": "claudeResurrect.editClaudeArgs",
-        "title": "Claude Resurrect: Edit CLI Arguments"
-      },
-      {
-        "command": "claudeResurrect.editUserName",
-        "title": "Claude Resurrect: Edit User Name"
-      },
-      {
-        "command": "claudeResurrect.renameTerminal",
-        "title": "Claude Resurrect: Rename Terminal"
-      },
-      {
         "command": "claudeResurrect.adoptSession",
         "title": "Claude Resurrect: Adopt Running Session"
-      },
-      {
-        "command": "claudeResurrect.addPreset",
-        "title": "Claude Resurrect: Add Session Preset"
-      },
-      {
-        "command": "claudeResurrect.editPreset",
-        "title": "Claude Resurrect: Edit Session Preset"
-      },
-      {
-        "command": "claudeResurrect.removePreset",
-        "title": "Claude Resurrect: Remove Session Preset"
       },
       {
         "command": "claudeResurrect.launchPreset",

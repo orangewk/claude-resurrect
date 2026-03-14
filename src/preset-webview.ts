@@ -32,7 +32,8 @@ export function openPresetsPanel(
   currentPanel = panel;
 
   panel.webview.html = getWebviewHtml(panel.webview);
-  sendPresets(panel);
+  // NOTE: Do NOT call sendPresets() here — the webview JS has not loaded yet.
+  // The webview sends a "ready" message once its JS initialises; we respond to that.
 
   // Listen for messages from webview
   panel.webview.onDidReceiveMessage(async (msg: WebviewMessage) => {
@@ -72,6 +73,10 @@ export function openPresetsPanel(
       case "saveGlobalShellWrapper": {
         const config = vscode.workspace.getConfiguration("claudeResurrect");
         await config.update("shellWrapper", msg.value, vscode.ConfigurationTarget.Workspace);
+        break;
+      }
+      case "ready": {
+        sendPresets(panel);
         break;
       }
       case "pickFolder": {
@@ -150,7 +155,11 @@ interface SaveGlobalShellWrapperMessage {
   value: string;
 }
 
-type WebviewMessage = SaveMessage | RemoveMessage | LaunchMessage | PickFolderMessage | SaveGlobalUserNameMessage | SaveGlobalClaudeArgsMessage | SaveGlobalShellWrapperMessage;
+interface ReadyMessage {
+  type: "ready";
+}
+
+type WebviewMessage = ReadyMessage | SaveMessage | RemoveMessage | LaunchMessage | PickFolderMessage | SaveGlobalUserNameMessage | SaveGlobalClaudeArgsMessage | SaveGlobalShellWrapperMessage;
 
 function getPresets(): SessionPreset[] {
   return vscode.workspace
@@ -544,6 +553,9 @@ function getWebviewHtml(webview: vscode.Webview): string {
     document.getElementById('global-shellWrapper').addEventListener('focusout', function(e) {
       vscode.postMessage({ type: 'saveGlobalShellWrapper', value: e.target.value });
     });
+
+    // Tell the extension we are ready to receive data
+    vscode.postMessage({ type: 'ready' });
 
     // Messages from extension
     window.addEventListener('message', function(e) {

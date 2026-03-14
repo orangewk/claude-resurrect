@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { SessionStore } from "./session-store";
 import { discoverSessions, isValidSessionId, lookupSessionFileSize, readSessionDisplayInfo, resolveDisplayName } from "./claude-dir";
+import { normalizePath } from "./normalize-path";
 import type { SessionMapping, SessionPreset } from "./types";
 import type { DiscoveredSession } from "./claude-dir";
 import { openPresetsPanel } from "./preset-webview";
@@ -111,6 +112,15 @@ function prefixedName(name: string, userNameOverride?: string): string {
   return `[${user}] ${name}`;
 }
 
+// --- Debug log channel (lazy-init) ---
+let _logChannel: vscode.OutputChannel | undefined;
+function log(msg: string): void {
+  if (!_logChannel) {
+    _logChannel = vscode.window.createOutputChannel("TS Recall Log");
+  }
+  _logChannel.appendLine(`[${new Date().toISOString()}] ${msg}`);
+}
+
 // --- Main activation ---
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -130,8 +140,8 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.hide();
       return;
     }
-    const tracked = store.getByProject(projectPath);
-    const live = tracked.filter((m) => m.status === "active").length;
+    const all = store.getAll();
+    const live = all.filter((m) => m.status === "active").length;
 
     statusBar.text = `$(terminal) TS Recall: ${live} live`;
     statusBar.tooltip = "Terminal Session Recall — this extension only tracks sessions it launched";
@@ -180,108 +190,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // --- Feature 1: Edit CLI Args ---
-  context.subscriptions.push(
-    vscode.commands.registerCommand("claudeResurrect.editClaudeArgs", async () => {
-      const config = vscode.workspace.getConfiguration("claudeResurrect");
-      const current = config.get<string[]>("claudeArgs", []);
-
-      const input = await vscode.window.showInputBox({
-        prompt: "Enter CLI arguments (space-separated)",
-        value: current.join(" "),
-        placeHolder: "--model opus --verbose",
-      });
-
-      if (input === undefined) return; // cancelled
-      const args = input.trim() ? input.trim().split(/\s+/) : [];
-      await config.update("claudeArgs", args, vscode.ConfigurationTarget.Workspace);
-      vscode.window.showInformationMessage(
-        args.length > 0
-          ? `CLI args updated: ${args.join(" ")}`
-          : "CLI args cleared.",
-      );
-    }),
-  );
-
-  // --- Feature 2: Edit User Name ---
-  context.subscriptions.push(
-    vscode.commands.registerCommand("claudeResurrect.editUserName", async () => {
-      const config = vscode.workspace.getConfiguration("claudeResurrect");
-      const current = config.get<string>("userName", "");
-
-      const input = await vscode.window.showInputBox({
-        prompt: "Enter user name (displayed as prefix in terminal names)",
-        value: current,
-        placeHolder: "e.g. John",
-      });
-
-      if (input === undefined) return; // cancelled
-      await config.update("userName", input.trim(), vscode.ConfigurationTarget.Workspace);
-      vscode.window.showInformationMessage(
-        input.trim()
-          ? `User name set to: ${input.trim()}`
-          : "User name cleared.",
-      );
-    }),
-  );
-
-  // --- Feature 3: Rename Terminal ---
-  context.subscriptions.push(
-    vscode.commands.registerCommand("claudeResurrect.renameTerminal", async () => {
-      if (!projectPath) {
-        vscode.window.showWarningMessage("Terminal Session Recall: No workspace folder open.");
-        return;
-      }
-
-      const activeTerminals = store.getActive(projectPath);
-      if (activeTerminals.length === 0) {
-        vscode.window.showInformationMessage("No active tracked terminals to rename.");
-        return;
-      }
-
-      interface RenameItem extends vscode.QuickPickItem {
-        mapping: SessionMapping;
-      }
-
-      const items: RenameItem[] = activeTerminals.map((m) => ({
-        label: m.terminalName,
-        description: m.sessionId.slice(0, 8),
-        mapping: m,
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: "Select terminal to rename",
-      });
-      if (!selected) return;
-
-      const newName = await vscode.window.showInputBox({
-        prompt: "Enter new terminal name",
-        value: selected.mapping.terminalName,
-      });
-      if (!newName || newName === selected.mapping.terminalName) return;
-
-      const finalName = prefixedName(newName);
-
-      // Update store with new name
-      await store.upsert({ ...selected.mapping, terminalName: finalName, lastSeen: Date.now() });
-
-      // Sync rename to matching preset in settings.json
-      await syncPresetTerminalName(selected.mapping.sessionId, finalName);
-
-      // Try to focus and rename the terminal via VS Code API
-      const terminal = vscode.window.terminals.find(
-        (t) => t.name === selected.mapping.terminalName,
-      );
-      if (terminal) {
-        terminal.show();
-        await vscode.commands.executeCommand("workbench.action.terminal.rename", { name: finalName });
-      }
-
-      updateStatusBar();
-      vscode.window.showInformationMessage(`Terminal renamed to: ${finalName}`);
-    }),
-  );
-
   // --- Feature 4: Adopt Running Session ---
   context.subscriptions.push(
     vscode.commands.registerCommand("claudeResurrect.adoptSession", async () => {
@@ -289,6 +197,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showWarningMessage("Terminal Session Recall: No workspace folder open.");
         return;
       }
+
+      log(`[adopt] projectPath=${projectPath}`);
 
       // List open terminals not already tracked
       const trackedNames = new Set(
@@ -298,7 +208,12 @@ export function activate(context: vscode.ExtensionContext): void {
         (t) => !trackedNames.has(t.name),
       );
 
+      log(`[adopt] all terminals=${vscode.window.terminals.map(t => t.name).join(", ")}`);
+      log(`[adopt] trackedNames=${[...trackedNames].join(", ")}`);
+      log(`[adopt] openTerminals (untracked)=${openTerminals.map(t => t.name).join(", ")}`);
+
       if (openTerminals.length === 0) {
+        log("[adopt] No untracked terminals found — aborting");
         vscode.window.showInformationMessage("No untracked terminals found.");
         return;
       }
@@ -319,14 +234,46 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // Find candidate sessions from history.jsonl
       const discovered = discoverSessions(projectPath);
+      log(`[adopt] discoverSessions returned ${discovered.length} sessions`);
+      for (const d of discovered.slice(0, 10)) {
+        log(`[adopt]   ${d.sessionId.slice(0, 8)} fileSize=${d.fileSize} project=${d.projectPath} prompt="${d.firstPrompt?.slice(0, 30)}"`);
+      }
       const allTrackedIds = new Set(store.getByProject(projectPath).map((m) => m.sessionId));
-      const candidates = discovered.filter(
-        (d) => !allTrackedIds.has(d.sessionId) && d.fileSize > 0,
-      );
+      log(`[adopt] allTrackedIds (by project exact match)=${[...allTrackedIds].map(id => id.slice(0, 8)).join(", ")}`);
+
+      // Use terminal cwd from shellIntegration to narrow candidates
+      const terminalCwd = selectedTerminal.terminal.shellIntegration?.cwd?.fsPath;
+      log(`[adopt] terminal cwd from shellIntegration: ${terminalCwd ?? "N/A"}`);
+
+      let candidates: DiscoveredSession[];
+      if (terminalCwd) {
+        const cwdCandidates = discovered.filter(
+          (d) => !allTrackedIds.has(d.sessionId) && d.fileSize > 0
+            && normalizePath(d.projectPath) === normalizePath(terminalCwd),
+        );
+        if (cwdCandidates.length > 0) {
+          candidates = cwdCandidates;
+          log(`[adopt] cwd-filtered candidates: ${candidates.length}`);
+        } else {
+          // Fallback: no match for cwd, show all
+          candidates = discovered.filter(
+            (d) => !allTrackedIds.has(d.sessionId) && d.fileSize > 0,
+          );
+          log(`[adopt] no cwd match, fallback to all candidates: ${candidates.length}`);
+        }
+      } else {
+        // No shellIntegration — old behavior
+        candidates = discovered.filter(
+          (d) => !allTrackedIds.has(d.sessionId) && d.fileSize > 0,
+        );
+        log(`[adopt] no shellIntegration, all candidates: ${candidates.length}`);
+      }
 
       let adoptedSessionId: string;
+      let adoptedProjectPath: string | undefined;
 
       if (candidates.length === 0) {
+        log("[adopt] No candidates — falling back to manual ID input");
         // Fallback: ask for manual session ID input
         const manualId = await vscode.window.showInputBox({
           prompt: "No untracked sessions found. Enter session ID manually:",
@@ -339,6 +286,12 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         adoptedSessionId = manualId;
+      } else if (candidates.length === 1 && terminalCwd) {
+        // Auto-adopt: exactly 1 candidate after cwd filtering
+        const auto = candidates[0];
+        log(`[adopt] auto-adopting single cwd candidate: ${auto.sessionId.slice(0, 8)}`);
+        adoptedSessionId = auto.sessionId;
+        adoptedProjectPath = auto.projectPath;
       } else {
         interface SessionItem extends vscode.QuickPickItem {
           session: DiscoveredSession;
@@ -358,24 +311,33 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (!selectedSession) return;
         adoptedSessionId = selectedSession.session.sessionId;
+        adoptedProjectPath = selectedSession.session.projectPath;
       }
+
+      log(`[adopt] selected sessionId=${adoptedSessionId} adoptedProjectPath=${adoptedProjectPath}`);
 
       // Duplicate check: abort if a preset with this sessionId already exists
       const existingPresets = getSessionPresets();
+      log(`[adopt] existing presets: ${existingPresets.map(p => `${p.label}(${p.sessionId?.slice(0, 8)})`).join(", ")}`);
       if (existingPresets.some((p) => p.sessionId === adoptedSessionId)) {
+        log(`[adopt] DUPLICATE — preset with this sessionId already exists, aborting`);
         vscode.window.showWarningMessage(
-          `A preset with session ${adoptedSessionId.slice(0, 8)} already exists. Use "Edit Preset" to modify it.`,
+          `A preset with session ${adoptedSessionId.slice(0, 8)} already exists. Use "Manage Presets" to modify it.`,
         );
         return;
       }
 
+      const effectiveCwd = adoptedProjectPath ?? projectPath;
+      log(`[adopt] effectiveCwd=${effectiveCwd}`);
+
       // Register in SessionStore for liveness tracking
-      await adoptTerminal(store, selectedTerminal.terminal, adoptedSessionId, projectPath);
+      await adoptTerminal(store, selectedTerminal.terminal, adoptedSessionId, effectiveCwd);
+      log(`[adopt] adoptTerminal done`);
 
       // Automatically create a preset
       const newPreset: SessionPreset = {
         label: selectedTerminal.terminal.name,
-        cwd: projectPath,
+        cwd: effectiveCwd,
         sessionId: adoptedSessionId,
         args: [],
         terminalName: selectedTerminal.terminal.name,
@@ -383,7 +345,9 @@ export function activate(context: vscode.ExtensionContext): void {
       };
       const config = vscode.workspace.getConfiguration("claudeResurrect");
       const updatedPresets = [...config.get<SessionPreset[]>("sessionPresets", []), newPreset];
+      log(`[adopt] saving ${updatedPresets.length} presets to workspace config`);
       await config.update("sessionPresets", updatedPresets, vscode.ConfigurationTarget.Workspace);
+      log(`[adopt] preset saved OK`);
 
       updateStatusBar();
       vscode.window.showInformationMessage(
@@ -392,91 +356,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // --- Feature 5: Session Presets CRUD ---
+  // --- Feature 5: Session Presets ---
   context.subscriptions.push(
-    vscode.commands.registerCommand("claudeResurrect.addPreset", async () => {
-      const preset = await promptPresetFields();
-      if (!preset) return;
-
-      const config = vscode.workspace.getConfiguration("claudeResurrect");
-      const presets = [...config.get<SessionPreset[]>("sessionPresets", []), preset];
-      await config.update("sessionPresets", presets, vscode.ConfigurationTarget.Workspace);
-      vscode.window.showInformationMessage(`Preset "${preset.label}" added.`);
-    }),
-
-    vscode.commands.registerCommand("claudeResurrect.editPreset", async () => {
-      const config = vscode.workspace.getConfiguration("claudeResurrect");
-      const presets = config.get<SessionPreset[]>("sessionPresets", []);
-      if (presets.length === 0) {
-        vscode.window.showInformationMessage("No presets to edit.");
-        return;
-      }
-
-      interface PresetItem extends vscode.QuickPickItem {
-        index: number;
-        preset: SessionPreset;
-      }
-
-      const items: PresetItem[] = presets.map((p, i) => ({
-        label: p.label,
-        description: `${p.cwd}${p.autoLaunch ? " (auto-launch)" : ""}`,
-        index: i,
-        preset: p,
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: "Select preset to edit",
-      });
-      if (!selected) return;
-
-      const updated = await promptPresetFields(selected.preset);
-      if (!updated) return;
-
-      const newPresets = [...presets];
-      newPresets[selected.index] = updated;
-      await config.update("sessionPresets", newPresets, vscode.ConfigurationTarget.Workspace);
-      vscode.window.showInformationMessage(`Preset "${updated.label}" updated.`);
-    }),
-
-    vscode.commands.registerCommand("claudeResurrect.removePreset", async () => {
-      const config = vscode.workspace.getConfiguration("claudeResurrect");
-      const presets = config.get<SessionPreset[]>("sessionPresets", []);
-      if (presets.length === 0) {
-        vscode.window.showInformationMessage("No presets to remove.");
-        return;
-      }
-
-      interface PresetItem extends vscode.QuickPickItem {
-        index: number;
-      }
-
-      const items: PresetItem[] = presets.map((p, i) => ({
-        label: p.label,
-        description: p.cwd,
-        index: i,
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: "Select preset to remove",
-      });
-      if (!selected) return;
-
-      const confirm = await vscode.window.showWarningMessage(
-        `Remove preset "${presets[selected.index].label}"?`,
-        { modal: true },
-        "Remove",
-      );
-      if (confirm !== "Remove") return;
-
-      const newPresets = presets.filter((_, i) => i !== selected.index);
-      await config.update("sessionPresets", newPresets, vscode.ConfigurationTarget.Workspace);
-      vscode.window.showInformationMessage(`Preset removed.`);
-    }),
-
     vscode.commands.registerCommand("claudeResurrect.launchPreset", async () => {
       const presets = getSessionPresets();
       if (presets.length === 0) {
-        vscode.window.showInformationMessage("No presets configured. Use 'Claude Resurrect: Add Session Preset' to create one.");
+        vscode.window.showInformationMessage("No presets configured. Use 'Claude Resurrect: Manage Presets' to create one.");
         return;
       }
 
@@ -715,87 +600,7 @@ async function adoptTerminal(
   }
 }
 
-// --- Preset sync helper ---
-
-/** Update a preset's terminalName in settings.json when a terminal is renamed */
-async function syncPresetTerminalName(sessionId: string, newTerminalName: string): Promise<void> {
-  const config = vscode.workspace.getConfiguration("claudeResurrect");
-  const presets = config.get<SessionPreset[]>("sessionPresets", []);
-  const idx = presets.findIndex((p) => p.sessionId === sessionId);
-  if (idx < 0) return;
-
-  const updated = [...presets];
-  updated[idx] = { ...updated[idx], terminalName: newTerminalName };
-  await config.update("sessionPresets", updated, vscode.ConfigurationTarget.Workspace);
-}
-
 // --- Feature 5: Preset helpers ---
-
-async function promptPresetFields(existing?: SessionPreset): Promise<SessionPreset | undefined> {
-  const label = await vscode.window.showInputBox({
-    prompt: "Preset label (display name)",
-    value: existing?.label ?? "",
-    placeHolder: "e.g. Directus Frontend",
-  });
-  if (!label) return undefined;
-
-  const cwdUri = await vscode.window.showOpenDialog({
-    canSelectFolders: true,
-    canSelectFiles: false,
-    canSelectMany: false,
-    openLabel: "Select working directory",
-    defaultUri: existing?.cwd ? vscode.Uri.file(existing.cwd) : undefined,
-  });
-  if (!cwdUri || cwdUri.length === 0) return undefined;
-  const cwd = cwdUri[0].fsPath;
-
-  const sessionIdInput = await vscode.window.showInputBox({
-    prompt: "Session ID to resume (leave empty for new session)",
-    value: existing?.sessionId ?? "",
-    placeHolder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  });
-  if (sessionIdInput === undefined) return undefined;
-  const sessionId = sessionIdInput.trim() || undefined;
-
-  if (sessionId && !isValidSessionId(sessionId)) {
-    vscode.window.showWarningMessage("Invalid session ID format. Preset not saved.");
-    return undefined;
-  }
-
-  const argsInput = await vscode.window.showInputBox({
-    prompt: "Extra CLI arguments (space-separated, optional)",
-    value: existing?.args?.join(" ") ?? "",
-    placeHolder: "--dangerously-skip-permissions --verbose",
-  });
-  if (argsInput === undefined) return undefined;
-  const args = argsInput.trim() ? argsInput.trim().split(/\s+/) : undefined;
-
-  const terminalNameInput = await vscode.window.showInputBox({
-    prompt: "Terminal tab name (optional, defaults to label)",
-    value: existing?.terminalName ?? "",
-    placeHolder: label,
-  });
-  if (terminalNameInput === undefined) return undefined;
-  const terminalName = terminalNameInput.trim() || undefined;
-
-  const autoLaunchChoice = await vscode.window.showQuickPick(
-    [
-      { label: "Yes", description: "Launch automatically on VS Code startup", value: true },
-      { label: "No", description: "Manual launch only", value: false },
-    ],
-    { placeHolder: "Auto-launch on startup?" },
-  );
-  if (!autoLaunchChoice) return undefined;
-
-  return {
-    label,
-    cwd,
-    sessionId,
-    args,
-    terminalName,
-    autoLaunch: autoLaunchChoice.value,
-  };
-}
 
 async function launchPreset(
   store: SessionStore,
@@ -909,7 +714,8 @@ async function autoLaunchPresets(
 
   let launched = 0;
   for (const preset of autoLaunch) {
-    const terminalName = prefixedName(preset.terminalName ?? preset.label);
+    const userName = resolveUserName(preset.userName);
+    const terminalName = prefixedName(preset.terminalName ?? preset.label, userName);
     const alreadyExists = vscode.window.terminals.some(
       (t) => t.name === terminalName,
     );

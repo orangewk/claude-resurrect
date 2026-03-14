@@ -26,6 +26,7 @@ export interface SessionDisplayInfo {
 /** Discovered session from history.jsonl */
 export interface DiscoveredSession {
   readonly sessionId: string;
+  readonly projectPath: string;
   readonly firstPrompt: string;
   readonly customTitle: string | undefined;
   readonly lastSeen: number; // Unix ms timestamp
@@ -41,16 +42,19 @@ export function discoverSessions(
 ): readonly DiscoveredSession[] {
   const entries = readHistoryEntries();
   const normalizedWorkspace = normalizePath(workspacePath);
-  const projectDir = findProjectDir(workspacePath);
+
+  console.log(`[TS Recall] discoverSessions workspace=${workspacePath} normalizedWorkspace=${normalizedWorkspace} historyEntries=${entries.length}`);
 
   // Group by sessionId, keep latest timestamp and first prompt per session
   const sessionMap = new Map<
     string,
-    { firstPrompt: string; lastSeen: number }
+    { firstPrompt: string; lastSeen: number; projectPath: string }
   >();
 
+  let matchedEntries = 0;
   for (const entry of entries) {
-    if (normalizePath(entry.project) !== normalizedWorkspace) continue;
+    if (!normalizePath(entry.project).startsWith(normalizedWorkspace)) continue;
+    matchedEntries++;
     if (!isValidSessionId(entry.sessionId)) continue;
 
     const existing = sessionMap.get(entry.sessionId);
@@ -66,16 +70,26 @@ export function discoverSessions(
       sessionMap.set(entry.sessionId, {
         firstPrompt: entry.display,
         lastSeen: entry.timestamp,
+        projectPath: entry.project,
       });
     }
   }
 
+  console.log(`[TS Recall] matchedEntries=${matchedEntries} uniqueSessions=${sessionMap.size}`);
+
   const sessions: DiscoveredSession[] = [];
   for (const [sessionId, data] of sessionMap) {
-    const fileSize = projectDir ? getSessionFileSize(projectDir, sessionId) : 0;
-    const displayInfo = readSessionDisplayInfo(workspacePath, sessionId);
+    const sessionProjectDir = findProjectDir(data.projectPath);
+    const fileSize = sessionProjectDir ? getSessionFileSize(sessionProjectDir, sessionId) : 0;
+    if (fileSize === 0) {
+      console.log(`[TS Recall]   ${sessionId.slice(0, 8)} fileSize=0 projectPath=${data.projectPath} projectDir=${sessionProjectDir ?? "NOT_FOUND"}`);
+    }
+    const displayInfo = readSessionDisplayInfo(data.projectPath, sessionId);
     sessions.push({ sessionId, ...data, customTitle: displayInfo.customTitle, fileSize });
   }
+
+  const withFile = sessions.filter(s => s.fileSize > 0).length;
+  console.log(`[TS Recall] total sessions=${sessions.length} withFile=${withFile} withoutFile=${sessions.length - withFile}`);
 
   return sessions.sort((a, b) => b.lastSeen - a.lastSeen);
 }
