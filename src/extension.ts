@@ -183,7 +183,7 @@ async function startNewSession(
     isTransient: true,
   });
   terminal.show();
-  terminal.sendText(`${getClaudePath()} --session-id ${sessionId}`);
+  sendTextWhenReady(terminal, `${getClaudePath()} --session-id ${sessionId}`);
   terminalSessionMap.set(terminal, sessionId);
 
   // Record PID for liveness checking on next startup
@@ -231,7 +231,7 @@ async function resumeSession(
     cwd: projectPath,
     isTransient: true,
   });
-  terminal.sendText(`${getClaudePath()} --resume ${sessionId}`);
+  sendTextWhenReady(terminal, `${getClaudePath()} --resume ${sessionId}`);
   terminal.show();
   terminalSessionMap.set(terminal, sessionId);
 
@@ -443,7 +443,7 @@ async function showQuickPick(
         cwd: projectPath,
         isTransient: true,
       });
-      terminal.sendText(`${getClaudePath()} --continue`);
+      sendTextWhenReady(terminal, `${getClaudePath()} --continue`);
       terminal.show();
       break;
     }
@@ -483,6 +483,36 @@ async function showQuickPick(
       }
       break;
   }
+}
+
+/**
+ * Wait for shell integration to become ready, then send text.
+ * Falls back to raw sendText after timeout (for environments without shell integration).
+ */
+function sendTextWhenReady(
+  terminal: vscode.Terminal,
+  text: string,
+  timeoutMs = 5000,
+): void {
+  if (terminal.shellIntegration) {
+    terminal.sendText(text);
+    return;
+  }
+
+  const disposable = vscode.window.onDidChangeTerminalShellIntegration(
+    ({ terminal: readyTerminal }) => {
+      if (readyTerminal === terminal) {
+        clearTimeout(timer);
+        disposable.dispose();
+        terminal.sendText(text);
+      }
+    },
+  );
+
+  const timer = setTimeout(() => {
+    disposable.dispose();
+    terminal.sendText(text);
+  }, timeoutMs);
 }
 
 function formatAge(timestamp: number): string {
