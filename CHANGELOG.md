@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Fix: WSL2 環境で autoRestore 時にシェル構文エラーが発生する問題を修正（Shell Integration API でシェル ready を待機）
+
 ## 1.0.4
 
 - Fix: Full Close → Restart 後に autoRestore が動作しない問題を修正（pruneDeadProcesses との実行順序を修正）
