@@ -697,7 +697,7 @@ Tests are ordered to avoid VS Code restarts — restart-dependent tests are at t
 | # | Test | Status | Notes |
 |---|------|--------|-------|
 | 1 | New session launch (QuickPick → New Session) | PASS | Claude started in new terminal |
-| 2 | Manage Presets webview opens with existing presets | PASS (v1.1.0) | Fixed in v1.1.0 with `ready` message handshake. Was FAIL in previous build. |
+| 2 | Manage Presets webview opens with existing presets | PASS | Fixed in v1.1.0 with `ready` message handshake |
 | 3 | Add preset via webview — save persists to settings.json | PASS | |
 | 4 | Edit preset fields via webview (label, CWD, args, userName, terminalName) | PASS | |
 | 5 | Remove preset via webview | PASS | |
@@ -705,25 +705,25 @@ Tests are ordered to avoid VS Code restarts — restart-dependent tests are at t
 | 7 | Launch preset via QuickPick (Launch Preset) | PASS | If already running, focuses existing terminal |
 | 8 | Preset with sessionId → `--resume` passed correctly, session continues | PASS | |
 | 9 | Global claudeArgs → all sessions receive the flags | PASS | |
-| 10 | Per-preset args override | — | Not explicitly tested |
+| 10 | Per-preset args override | PASS | Preset args added alongside global claudeArgs |
 | 11 | userName + shellWrapper → command wrapped correctly | PASS | `su - abc -c 'cd ... && ...'` works |
-| 12 | Per-preset userName override | — | Not explicitly tested |
-| 13 | Per-preset shellWrapper override | — | Not explicitly tested |
+| 12 | Per-preset userName override | — | Not explicitly tested (user always uses global userName) |
+| 13 | Per-preset shellWrapper override | — | Not explicitly tested (user always uses global shellWrapper) |
 | 14 | No userName set → command runs directly | — | Not tested (user always needs userName) |
-| 15 | Adopt running session | PASS | Process inspector auto-detects session ID + CWD on Linux. |
-| 16 | Terminal rename → preset updated | FAIL | `onDidChangeTerminalState` does NOT fire on rename — it only tracks `isInteractedWith`. No VS Code API for rename detection. See bug report below. |
-| 17 | Webview global settings sync to settings.json | PASS | ConfigurationTarget inconsistency fixed — all paths use Workspace. |
-| 18 | QuickPick menu — all actions visible | PASS | Includes "Adopt Running Session" in Actions. |
-| 19 | QuickPick responsiveness | PASS | maxQuickPickSessions (default 10) + lazy readSessionDisplayInfo. |
-| 20 | Adopt: process inspector auto-detect (Linux) | PASS | Auto-adopt with session ID from procfs. |
-| 21 | Adopt: user + args populated in preset | FAIL | `/proc/<pid>/cmdline` only shows "claude" — Node.js overwrites process argv. Args not extractable from procfs. See bug report below. |
+| 15 | Adopt running session | PASS | Process inspector auto-detects session ID + CWD on Linux |
+| 16 | Terminal rename → preset updated | PASS | 2-second polling detects rename, updates store + preset. Verified by log. |
+| 17 | Webview global settings sync to settings.json | PASS | ConfigurationTarget inconsistency fixed — all paths use Workspace |
+| 18 | QuickPick menu — all actions visible | PASS | Includes "Adopt Running Session" in Actions |
+| 19 | QuickPick responsiveness | PASS | maxQuickPickSessions (default 10) + lazy readSessionDisplayInfo |
+| 20 | Adopt: process inspector auto-detect (Linux) | PASS | Auto-adopt with session ID from procfs |
+| 21 | Adopt: user + args populated in preset | PASS | Args extracted from session JSONL (permissionMode, model) |
 
 ### Restart-dependent tests
 
 | # | Test | Status | Notes |
 |---|------|--------|-------|
-| 22 | Auto-launch presets on VS Code startup (autoLaunch: true) | PARTIAL | Reload Window triggers auto-launch. Terminal name prefix consistency verified (both code paths use prefixedName). |
-| 23 | Auto-restore existing sessions on VS Code restart | DEFERRED | Full restart not tested yet |
+| 22 | Auto-launch presets on VS Code startup (autoLaunch: true) | PASS | Full VS Code restart tested |
+| 23 | Auto-restore existing sessions on VS Code restart | PASS | Full VS Code restart tested, notification shown, session resumed with --resume |
 
 ---
 
