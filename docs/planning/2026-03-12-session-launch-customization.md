@@ -1085,3 +1085,55 @@ if (idx < 0) {
 ### Status: FIXED ✅ (2026-03-15)
 
 Verified by log: `preset[1] updated` — fallback to terminalName/label match works. Both rename cycles (`XXX` → `YYY`) correctly updated store and preset.
+
+---
+
+## PR #61 Review Feedback (from @orangewk)
+
+The upstream maintainer requested changes on PR #61. Summary of issues:
+
+### 1. Build failure: missing `process-inspector.ts`
+
+The file `src/process-inspector.ts` is imported in `extension.ts:8` but was never committed to git. Both `npm run typecheck` and `npm run test` fail (4/66 tests broken).
+
+**Root cause**: The file was created locally but never `git add`-ed.
+
+**Fix**: Commit the file.
+
+### 2. Security: command injection in `buildWrappedCommand`
+
+`src/extension.ts:77-80` — `{cwd}` and `{user}` are interpolated into the shell wrapper template without `shellEscape()`. Only `{cmd}` is escaped (via `buildCommand()`).
+
+Combined with `autoLaunch: true`, a malicious `.vscode/settings.json` could execute arbitrary commands just by opening a cloned repository.
+
+**Fix**: Apply `shellEscape()` to both `{cwd}` and `{user}`. Consider adding a Workspace Trust check before auto-launching.
+
+### 3. Path traversal in `startsWith` matching
+
+`session-store.ts:44` and `claude-dir.ts:56` use `.startsWith(normalized)` without a path separator check. `/home/code/app` would incorrectly match `/home/code/app-malicious`.
+
+**Fix**: Use `startsWith(normalized + "/") || === normalized` pattern.
+
+### 4. Scope: consider splitting PR
+
+The PR bundles 9 features into +2,634 lines. The reviewer suggests splitting into smaller PRs:
+- Core presets + auto-launch
+- Webview preset manager
+- Adopt + process inspection
+- Multi-user (userName / shellWrapper)
+
+**Decision**: Keep as single PR. The features are tightly coupled — presets contain userName/shellWrapper fields, adopt auto-creates presets, webview depends on preset model. Splitting into 4 stacked PRs would require sequential review/merge, and more importantly, we cannot re-test each slice independently in our environment (testing requires manual VS Code interaction with running Claude sessions). The 23-item testing checklist was validated on the combined codebase; splitting would invalidate those results.
+
+### 5. CLAUDE.md: keep Japanese
+
+The project's `CLAUDE.md` was rewritten from Japanese to English. The project uses Japanese for documentation — the original language should be preserved.
+
+**Fix**: Restore Japanese content, add new sections in Japanese or keep bilingual.
+
+### Status: All 5 points addressed ✅
+
+- #1: `process-inspector.ts` committed
+- #2: `shellEscape()` applied to `{cwd}` and `{user}`, Workspace Trust check added to `autoLaunchPresets()`
+- #3: `startsWith` replaced with exact-or-subdir matching (`=== normalized || startsWith(normalized + "/")`)
+- #4: Kept as single PR — features tightly coupled, testing cannot be split
+- #5: CLAUDE.md restored to Japanese with new sections added
