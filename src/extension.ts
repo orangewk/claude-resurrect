@@ -5,10 +5,15 @@ import { discoverSessions, isValidSessionId, lookupSessionFileSize, readSessionD
 import type { SessionMapping } from "./types";
 import type { DiscoveredSession } from "./claude-dir";
 
+let log: vscode.LogOutputChannel;
+
 export function activate(context: vscode.ExtensionContext): void {
+  log = vscode.window.createOutputChannel("TS Recall", { log: true });
+  context.subscriptions.push(log);
   const store = SessionStore.fromState(context.globalState);
   const terminalSessionMap = new Map<vscode.Terminal, string>();
   let projectPath = getProjectPath();
+  log.info(`activate: projectPath=${projectPath ?? "none"}`);
 
   // --- Status Bar ---
   const statusBar = vscode.window.createStatusBarItem(
@@ -204,14 +209,16 @@ async function resumeSession(
   terminalSessionMap: Map<vscode.Terminal, string>,
 ): Promise<void> {
   if (!isValidSessionId(sessionId)) {
-    console.error(`[Terminal Session Recall] Invalid session ID rejected: ${sessionId.slice(0, 20)}`);
+    log.warn(`resumeSession: invalid session ID rejected: ${sessionId.slice(0, 20)}`);
     return;
   }
 
   if (lookupSessionFileSize(projectPath, sessionId) === 0) {
+    log.warn(`resumeSession: session ${sessionId.slice(0, 8)} has no conversation data, marking inactive`);
     vscode.window.showWarningMessage(
       `Terminal Session Recall: Session ${sessionId.slice(0, 8)} has no conversation data. Skipping.`,
     );
+    await store.markInactiveBySessionId(sessionId, projectPath);
     return;
   }
 
@@ -254,6 +261,7 @@ async function autoRestoreSessions(
   const config = vscode.workspace.getConfiguration("claudeResurrect");
   const maxRestore = config.get<number>("maxAutoRestore", 10);
   const active = store.getActive(projectPath);
+  log.info(`autoRestore: ${active.length} active session(s) found`);
   if (active.length === 0) return;
 
   const toRestore = active.slice(0, maxRestore);
@@ -316,7 +324,7 @@ async function showQuickPick(
   ].sort((a, b) => b.lastSeen - a.lastSeen);
 
   interface MenuItem extends vscode.QuickPickItem {
-    action: "new" | "continue" | "focus" | "resume-tracked" | "resume-discovered";
+    action: "new" | "continue" | "reset-stale" | "focus" | "resume-tracked" | "resume-discovered";
     mapping?: SessionMapping;
     discovered?: DiscoveredSession;
   }
@@ -339,6 +347,17 @@ async function showQuickPick(
     description: "Resume the most recent session (claude --continue)",
     action: "continue",
   });
+
+  // Show reset action when stale active sessions exist (terminal gone but status still active)
+  const liveTerminalNames = vscode.window.terminals.map((t) => t.name);
+  const staleCount = activeItems.filter((m) => !liveTerminalNames.includes(m.terminalName)).length;
+  if (staleCount > 0) {
+    items.push({
+      label: `$(refresh) Reset Stale Sessions`,
+      description: `${staleCount} active session(s) with no terminal`,
+      action: "reset-stale",
+    });
+  }
 
   // Active section
   if (activeItems.length > 0) {
@@ -437,6 +456,19 @@ async function showQuickPick(
     case "new":
       await startNewSession(store, projectPath, onUpdate, terminalSessionMap);
       break;
+    case "reset-stale": {
+      const names = vscode.window.terminals.map((t) => t.name);
+      log.info(`resetStale: live terminals=[${names.join(", ")}]`);
+      const resetCount = await store.resetStale(projectPath, names);
+      log.info(`resetStale: ${resetCount} session(s) marked inactive`);
+      if (resetCount > 0) {
+        vscode.window.showInformationMessage(
+          `Terminal Session Recall: Reset ${resetCount} stale session(s).`,
+        );
+      }
+      onUpdate();
+      break;
+    }
     case "continue": {
       const terminal = vscode.window.createTerminal({
         name: "TS Recall: continue",
@@ -486,33 +518,61 @@ async function showQuickPick(
 }
 
 /**
- * Wait for shell integration to become ready, then send text.
- * Falls back to raw sendText after timeout (for environments without shell integration).
+ * Wait for shell readiness, then send text.
+ *
+ * 3-tier fallback for WSL2 compatibility:
+ *   1. Shell integration ready → send immediately
+ *   2. Shell type detected (onDidChangeTerminalState) → send after short delay
+ *      for .bashrc initialization to complete
+ *   3. Final timeout fallback (15s)
  */
 function sendTextWhenReady(
   terminal: vscode.Terminal,
   text: string,
-  timeoutMs = 5000,
+  timeoutMs = 15000,
 ): void {
+  const name = terminal.name;
+  log.debug(`sendTextWhenReady[${name}]: start`);
+
   if (terminal.shellIntegration) {
+    log.debug(`sendTextWhenReady[${name}]: shellIntegration already ready, sending immediately`);
     terminal.sendText(text);
     return;
   }
 
-  const disposable = vscode.window.onDidChangeTerminalShellIntegration(
+  log.debug(`sendTextWhenReady[${name}]: waiting for shell readiness (timeout=${timeoutMs}ms)`);
+  let sent = false;
+  let shellDelayTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const send = (tier: string): void => {
+    if (sent) return;
+    sent = true;
+    log.info(`sendTextWhenReady[${name}]: sent via ${tier}`);
+    clearTimeout(fallbackTimer);
+    if (shellDelayTimer) clearTimeout(shellDelayTimer);
+    shellIntDisposable.dispose();
+    stateDisposable.dispose();
+    terminal.sendText(text);
+  };
+
+  // Tier 1: Shell integration becomes ready → send immediately
+  const shellIntDisposable = vscode.window.onDidChangeTerminalShellIntegration(
     ({ terminal: readyTerminal }) => {
-      if (readyTerminal === terminal) {
-        clearTimeout(timer);
-        disposable.dispose();
-        terminal.sendText(text);
-      }
+      if (readyTerminal === terminal) send("tier1:shellIntegration");
     },
   );
 
-  const timer = setTimeout(() => {
-    disposable.dispose();
-    terminal.sendText(text);
-  }, timeoutMs);
+  // Tier 2: Shell type detected → send after delay for init completion
+  const stateDisposable = vscode.window.onDidChangeTerminalState((t) => {
+    if (t === terminal && t.state.shell != null) {
+      log.debug(`sendTextWhenReady[${name}]: tier2 shell type detected: ${t.state.shell}, delaying 2s`);
+      stateDisposable.dispose();
+      shellDelayTimer = setTimeout(() => send("tier2:shellDetected"), 2000);
+    }
+  });
+
+  // Tier 3: Final fallback timeout
+  const fallbackTimer = setTimeout(() => send("tier3:timeout"), timeoutMs);
 }
 
 function formatAge(timestamp: number): string {

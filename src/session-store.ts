@@ -197,6 +197,19 @@ export class SessionStore {
     return pruned;
   }
 
+  /** Mark active sessions whose terminal no longer exists as inactive */
+  async resetStale(projectPath: string, liveTerminalNames: readonly string[]): Promise<number> {
+    const actives = this.getActive(projectPath);
+    let reset = 0;
+    for (const m of actives) {
+      if (!liveTerminalNames.includes(m.terminalName)) {
+        await this.markInactiveBySessionId(m.sessionId, m.projectPath);
+        reset++;
+      }
+    }
+    return reset;
+  }
+
   /** Remove all expired mappings */
   async pruneExpired(ttlHours: number): Promise<number> {
     const cutoff = Date.now() - ttlHours * 60 * 60 * 1000;

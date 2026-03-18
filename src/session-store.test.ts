@@ -344,6 +344,42 @@ describe("SessionStore", () => {
     });
   });
 
+  describe("resetStale", () => {
+    it("marks active sessions with no matching terminal as inactive", async () => {
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-1", status: "active" }),
+        createMapping({ terminalName: "TS Recall #2", sessionId: "sess-2", status: "active" }),
+      ]);
+
+      const reset = await store.resetStale("C:\\dev\\my-project", ["TS Recall #1"]);
+      expect(reset).toBe(1);
+      expect(store.getAll().find(m => m.sessionId === "sess-1")!.status).toBe("active");
+      expect(store.getAll().find(m => m.sessionId === "sess-2")!.status).toBe("inactive");
+    });
+
+    it("does not touch inactive or completed sessions", async () => {
+      const { store } = createStore([
+        createMapping({ terminalName: "A", sessionId: "sess-1", status: "inactive" }),
+        createMapping({ terminalName: "B", sessionId: "sess-2", status: "completed" }),
+      ]);
+
+      const reset = await store.resetStale("C:\\dev\\my-project", []);
+      expect(reset).toBe(0);
+      expect(store.getAll().find(m => m.sessionId === "sess-1")!.status).toBe("inactive");
+      expect(store.getAll().find(m => m.sessionId === "sess-2")!.status).toBe("completed");
+    });
+
+    it("returns 0 when all active sessions have matching terminals", async () => {
+      const { store } = createStore([
+        createMapping({ terminalName: "TS Recall #1", sessionId: "sess-1", status: "active" }),
+      ]);
+
+      const reset = await store.resetStale("C:\\dev\\my-project", ["TS Recall #1"]);
+      expect(reset).toBe(0);
+      expect(store.getAll()[0].status).toBe("active");
+    });
+  });
+
   it("pruneExpired removes old entries and returns count", async () => {
     const now = Date.now();
     const { store } = createStore([

@@ -13,9 +13,28 @@ const mockStatusBarItem = {
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 const subscriptions: { dispose: () => void }[] = [];
 
+const mockLogChannel = {
+  trace: vi.fn(),
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  append: vi.fn(),
+  appendLine: vi.fn(),
+  replace: vi.fn(),
+  clear: vi.fn(),
+  show: vi.fn(),
+  hide: vi.fn(),
+  dispose: vi.fn(),
+  name: "TS Recall",
+  logLevel: 1,
+  onDidChangeLogLevel: vi.fn(),
+};
+
 const vscode = {
   window: {
     createStatusBarItem: vi.fn(() => mockStatusBarItem),
+    createOutputChannel: vi.fn(() => mockLogChannel),
     createTerminal: vi.fn(() => ({
       show: vi.fn(),
       sendText: vi.fn(),

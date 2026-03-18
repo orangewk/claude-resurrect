@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.6
+
+- Fix: conversation data なしセッションが active のまま残り、毎起動時に警告が繰り返される問題を修正 (#64)
+- Fix: WSL2 環境で sendText が早すぎてシェルパースエラーになる問題を改善 — 3 段フォールバック（Shell Integration → shell type 検出+遅延 → 15s タイムアウト）に変更 (#63)
+- Add: QuickPick に「Reset Stale Sessions」アクションを追加 — ターミナルが消失した active セッションを手動リセット可能に (#62)
+- Add: LogOutputChannel によるランタイムログ出力（「出力」パネル → TS Recall で確認可能）
+
 ## 1.0.5
 
 - Fix: WSL2 環境で autoRestore 時にシェル構文エラーが発生する問題を修正（Shell Integration API でシェル ready を待機）

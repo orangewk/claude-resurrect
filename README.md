@@ -9,6 +9,8 @@
 - Status bar shows live and idle session counts for the current project
 - QuickPick session manager: start new sessions, resume interrupted or completed sessions
 - Automatically restores interrupted sessions when VSCode restarts
+- Reset stale sessions — clear "active" entries whose terminal no longer exists
+- Diagnostic logging in the Output panel (channel: "TS Recall") for troubleshooting
 
 ## Requirements
 
@@ -63,6 +65,8 @@ This extension does NOT:
 - ステータスバーにプロジェクトごとのセッション数を表示（live / idle）
 - Quick Pick メニューでセッション管理：新規作成、中断・完了セッションの再開
 - VSCode 再起動時に中断セッションを自動復元
+- ステイルセッションのリセット — ターミナルが消失した "active" エントリを手動クリア
+- 「出力」パネルでの診断ログ（チャンネル: "TS Recall"）でトラブルシューティング
 
 ### 前提条件
 
