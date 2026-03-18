@@ -76,8 +76,8 @@ function buildWrappedCommand(
 
   return wrapper
     .replace(/\{cmd\}/g, cmd)
-    .replace(/\{cwd\}/g, cwd)
-    .replace(/\{user\}/g, userName);
+    .replace(/\{cwd\}/g, shellEscape(cwd))
+    .replace(/\{user\}/g, shellEscape(userName));
 }
 
 // --- Config helpers ---
@@ -862,6 +862,12 @@ async function autoLaunchPresets(
   store: SessionStore,
   onUpdate: () => void,
 ): Promise<void> {
+  // Security: do not auto-launch in untrusted workspaces
+  if (!vscode.workspace.isTrusted) {
+    log("[auto-launch] skipped — workspace is not trusted");
+    return;
+  }
+
   const presets = getSessionPresets();
   const autoLaunch = presets.filter((p) => p.autoLaunch === true);
   if (autoLaunch.length === 0) return;
