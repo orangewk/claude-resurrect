@@ -41,7 +41,10 @@ export class SessionStore {
   getByProject(projectPath: string): readonly SessionMapping[] {
     const normalized = normalizePath(projectPath);
     return this.mappings.filter(
-      (m) => normalizePath(m.projectPath).startsWith(normalized),
+      (m) => {
+        const mp = normalizePath(m.projectPath);
+        return mp === normalized || mp.startsWith(normalized + "/");
+      },
     );
   }
 

@@ -53,7 +53,8 @@ export function discoverSessions(
 
   let matchedEntries = 0;
   for (const entry of entries) {
-    if (!normalizePath(entry.project).startsWith(normalizedWorkspace)) continue;
+    const ep = normalizePath(entry.project);
+    if (ep !== normalizedWorkspace && !ep.startsWith(normalizedWorkspace + "/")) continue;
     matchedEntries++;
     if (!isValidSessionId(entry.sessionId)) continue;
 
