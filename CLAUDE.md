@@ -33,6 +33,15 @@ npm run package    # .vsix パッケージ作成
 | normalize-path.ts | Yes | 純粋関数 |
 | extension.ts | No | vscode API 依存。F5 デバッグで検証 |
 
+## Dependabot ポリシー
+
+- **パッチ/マイナー** バージョンアップ: 品質ゲート通過を確認してマージ
+- **メジャー** バージョンアップ: 即マージしない。以下を確認してから判断する
+  - peer dependency の互換性（他の devDependencies が対応しているか）
+  - エコシステム全体の対応状況
+  - breaking changes の影響範囲
+- `npm install` が成功することを必ず確認してからマージする
+
 ## コーディングスタイル
 
 - TypeScript strict
