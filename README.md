@@ -31,6 +31,7 @@
 - **Only sessions started through this extension are fully tracked.** The status bar "live" count and auto-restore only cover sessions launched via the QuickPick menu or auto-restore. Sessions started manually in a terminal (e.g., `claude` or `claude --resume`) are not tracked as "live" — they may appear as idle in the session list even while running.
 - **This extension does not manage session data.** It only reads what Claude CLI creates. Sessions with no conversation (e.g., opened and immediately closed) are excluded from the session list, but cannot be deleted by this extension.
 - **Read-only by design.** Deleting or modifying `~/.claude/` data is out of scope. Use Claude CLI directly to manage session history.
+- **WSL2 terminals are not fully supported.** Shell integration does not reliably activate in WSL2 terminals, which can cause session restore commands to be sent before the shell is ready. If you need session persistence in WSL2, consider using tmux or similar terminal multiplexers instead. See [#63](https://github.com/orangewk/terminal-session-recall/issues/63) for details.
 
 ## Data Access
 
@@ -89,6 +90,7 @@ This extension does NOT:
 - **追跡できるのは、この拡張経由で起動したセッションのみ。** ステータスバーの "live" カウントや自動復元は、QuickPick メニューまたは自動復元で起動したセッションだけが対象。ターミナルで手動起動した `claude` セッションは "live" として追跡されないため、実行中でも idle として一覧に表示されることがある。
 - **セッションデータの管理は行わない。** CLI が作成したデータを読み取るだけ。会話が発生していないセッションは一覧に表示されない。
 - **読み取り専用。** `~/.claude/` への書き込み・削除は行わない。セッション履歴の管理は Claude CLI 側で行う。
+- **WSL2 ターミナルは完全にはサポートされていない。** WSL2 ではシェル統合（Shell Integration）が正常に発火しない場合があり、シェル準備完了前に復元コマンドが送信されることがある。WSL2 でセッション永続化が必要な場合は tmux 等のターミナルマルチプレクサの利用を推奨。詳細は [#63](https://github.com/orangewk/terminal-session-recall/issues/63) を参照。
 
 ### データアクセス
 
