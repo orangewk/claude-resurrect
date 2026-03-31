@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Revert: WSL2 対策の sendTextWhenReady 遅延処理を削除 — 根本原因は起動スクリプトのクォーテーション差異であり、遅延は不要かつ動作を阻害していた (#77)
+
 ## 1.0.7
 
 - Docs: README にデモ GIF を追加（Marketplace ストアページ用）
