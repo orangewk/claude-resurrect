@@ -116,9 +116,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // dead process を先にクリーンアップしてから autoRestore
     // exit 済みセッションの誤復元を防ぐ
-    void store.pruneDeadProcesses(path).then(() => {
+    void store.pruneDeadProcesses(path).then(async () => {
       if (autoRestore) {
-        void autoRestoreSessions(store, path, updateStatusBar, terminalSessionMap);
+        await autoRestoreSessions(store, path, updateStatusBar, terminalSessionMap);
       }
       updateStatusBar();
     });
