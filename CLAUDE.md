@@ -1,5 +1,7 @@
 # Claude Resurrect — Claude Code 設定
 
+> 汎用ルール（行動規範、git運用、Dependabotポリシー、環境注意事項等）は `~/.claude/CLAUDE.md` を参照（chezmoi管理）。
+
 ## プロジェクト概要
 
 VSCode 再起動時に Claude Code CLI セッションを自動復元する拡張機能。
