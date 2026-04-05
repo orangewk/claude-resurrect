@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0-beta.1
+
+> **Beta**: Claude CLI v2.1.90+ のダイアログ変更への緊急対応。ターミナル出力のパターンマッチに依存しており、動作が不安定になる可能性があります。
+
+- Add: Claude CLI v2.1.90+ の resume ダイアログ（"Resume from summary" / "Resume full session"）を検知し自動応答 (#92)
+- Add: `resumeDialogAction` 設定 — `summary`（デフォルト）/ `full` / `ask` で応答を制御
+- Add: Shell Integration `executeCommand` + `read()` によるターミナル出力監視（Shell Integration 無効時は `sendText` フォールバック）
+- Add: 15 秒タイムアウト保護 — CLI のダイアログ文言変更・廃止時にもハングしない
+
 ## 1.0.8
 
 - Revert: WSL2 対策の sendTextWhenReady 遅延処理を削除 — 根本原因は起動スクリプトのクォーテーション差異であり、遅延は不要かつ動作を阻害していた (#77)
