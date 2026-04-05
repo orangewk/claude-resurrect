@@ -2,6 +2,10 @@
 
 > Unofficial VSCode extension — Automatically restore Claude Code CLI sessions after restart
 
+> **v1.1.0-beta**: This version adds urgent support for the resume dialog introduced in Claude CLI v2.1.90+. Because the CLI change was not accompanied by a public API, this extension detects the dialog via terminal output matching — behavior may be fragile. Please report issues at [GitHub Issues](https://github.com/orangewk/terminal-session-recall/issues).
+
+> **v1.1.0-beta**: このバージョンは Claude CLI v2.1.90+ で追加された resume ダイアログへの緊急対応です。CLI 側に公開 API がないため、ターミナル出力のパターンマッチで検知しており、動作が不安定になる可能性があります。不具合は [GitHub Issues](https://github.com/orangewk/terminal-session-recall/issues) へ報告してください。
+
 ![Demo](art/demo.gif)
 
 ![UI Overview](art/ui-overview.png)
@@ -25,6 +29,7 @@
 | claudeResurrect.autoRestore | true | Automatically restore interrupted sessions on startup |
 | claudeResurrect.autoRestoreMaxAge | 24 | Maximum age (hours) of sessions to auto-restore |
 | claudeResurrect.claudePath | "claude" | Path to the Claude CLI executable |
+| claudeResurrect.resumeDialogAction | "summary" | How to handle CLI's large-session resume dialog: `summary`, `full`, or `ask` |
 
 ## Limitations
 
@@ -84,6 +89,7 @@ This extension does NOT:
 | claudeResurrect.autoRestore | true | 起動時に中断セッションを自動復元 |
 | claudeResurrect.autoRestoreMaxAge | 24 | 自動復元の最大経過時間（時間） |
 | claudeResurrect.claudePath | "claude" | Claude CLI のパス |
+| claudeResurrect.resumeDialogAction | "summary" | CLI の大セッション resume ダイアログへの対応: `summary`, `full`, `ask` |
 
 ### 制限事項
 

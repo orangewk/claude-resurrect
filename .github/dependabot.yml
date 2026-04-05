@@ -1,12 +1,16 @@
 version: 2
 updates:
+  # npm セキュリティ更新のみ（2026-04-05 変更）
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "monthly"
+    open-pull-requests-limit: 3
     labels:
-      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
 
   - package-ecosystem: "github-actions"
     directory: "/"

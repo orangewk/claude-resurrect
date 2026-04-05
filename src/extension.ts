@@ -205,6 +205,7 @@ async function resumeSession(
   projectPath: string,
   onUpdate: () => void,
   terminalSessionMap: Map<vscode.Terminal, string>,
+  isAutoRestore = false,
 ): Promise<void> {
   if (!isValidSessionId(sessionId)) {
     log.warn(`resumeSession: invalid session ID rejected: ${sessionId.slice(0, 20)}`);
@@ -231,12 +232,16 @@ async function resumeSession(
   };
   await store.upsert(mapping);
 
+  const config = vscode.workspace.getConfiguration("claudeResurrect");
+  const action = config.get<ResumeDialogAction>("resumeDialogAction", "summary");
+  const command = `${getClaudePath()} --resume ${sessionId}`;
+
   const terminal = vscode.window.createTerminal({
     name: terminalName,
     cwd: projectPath,
     isTransient: true,
   });
-  terminal.sendText(`${getClaudePath()} --resume ${sessionId}`);
+  executeClaudeCommand(terminal, command, { action, isAutoRestore });
   terminal.show();
   terminalSessionMap.set(terminal, sessionId);
 
@@ -275,7 +280,7 @@ async function autoRestoreSessions(
 
     const info = readSessionDisplayInfo(projectPath, mapping.sessionId);
     const displayName = resolveDisplayName(info, mapping.sessionId);
-    await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate, terminalSessionMap);
+    await resumeSession(store, mapping.sessionId, displayName, projectPath, onUpdate, terminalSessionMap, true);
     restored++;
   }
 
@@ -468,12 +473,14 @@ async function showQuickPick(
       break;
     }
     case "continue": {
+      const config = vscode.workspace.getConfiguration("claudeResurrect");
+      const action = config.get<ResumeDialogAction>("resumeDialogAction", "summary");
       const terminal = vscode.window.createTerminal({
         name: "TS Recall: continue",
         cwd: projectPath,
         isTransient: true,
       });
-      terminal.sendText(`${getClaudePath()} --continue`);
+      executeClaudeCommand(terminal, `${getClaudePath()} --continue`, { action, isAutoRestore: false });
       terminal.show();
       break;
     }
@@ -512,6 +519,126 @@ async function showQuickPick(
         await resumeSession(store, d.sessionId, displayName, projectPath, onUpdate, terminalSessionMap);
       }
       break;
+  }
+}
+
+// --- Resume dialog detection ---
+
+type ResumeDialogAction = "summary" | "full" | "ask";
+
+/** Pattern to detect the Claude CLI resume dialog (v2.1.90+). Uses partial match for resilience. */
+const RESUME_DIALOG_PATTERN = /Resume from summary/i;
+
+/**
+ * Execute a claude command in the terminal and watch for the resume dialog.
+ *
+ * Strategy:
+ * 1. If Shell Integration is available → executeCommand + read() stream for output detection
+ * 2. Fallback → sendText (no dialog detection, protected by timeout)
+ *
+ * Returns a Disposable that cleans up the watcher.
+ */
+function executeClaudeCommand(
+  terminal: vscode.Terminal,
+  command: string,
+  options: {
+    action: ResumeDialogAction;
+    isAutoRestore: boolean;
+  },
+): vscode.Disposable {
+  const DIALOG_TIMEOUT_MS = 15_000;
+  const disposables: vscode.Disposable[] = [];
+  let dialogHandled = false;
+
+  const handleDialog = async (
+    sendResponse: (text: string) => void,
+  ): Promise<void> => {
+    if (dialogHandled) return;
+    dialogHandled = true;
+
+    const effectiveAction =
+      options.action === "ask" && options.isAutoRestore
+        ? "summary" // autoRestore 中に ask は不適切 → summary にフォールバック
+        : options.action;
+
+    if (effectiveAction === "ask") {
+      const choice = await vscode.window.showQuickPick(
+        [
+          { label: "$(sparkle) Resume from summary", description: "Saves tokens (recommended)", value: "1" },
+          { label: "$(file) Resume full session", description: "Load entire context as-is", value: "2" },
+        ],
+        { placeHolder: "Claude CLI: How do you want to resume this session?" },
+      );
+      // If user cancels the picker, default to summary
+      sendResponse(choice?.value ?? "1");
+    } else {
+      sendResponse(effectiveAction === "summary" ? "1" : "2");
+    }
+  };
+
+  // Try Shell Integration first
+  if (terminal.shellIntegration) {
+    log.info("executeClaudeCommand: using shellIntegration.executeCommand");
+    const execution = terminal.shellIntegration.executeCommand(command);
+    watchExecutionStream(execution, terminal, handleDialog, DIALOG_TIMEOUT_MS, disposables);
+  } else {
+    // Wait for Shell Integration to become available, with timeout fallback
+    const SI_WAIT_MS = 3_000;
+    let resolved = false;
+
+    const siListener = vscode.window.onDidChangeTerminalShellIntegration(({ terminal: t, shellIntegration }) => {
+      if (t !== terminal || resolved) return;
+      resolved = true;
+      siListener.dispose();
+      log.info("executeClaudeCommand: shellIntegration became available");
+      const execution = shellIntegration.executeCommand(command);
+      watchExecutionStream(execution, terminal, handleDialog, DIALOG_TIMEOUT_MS, disposables);
+    });
+    disposables.push(siListener);
+
+    setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      siListener.dispose();
+      log.info("executeClaudeCommand: shellIntegration timeout, falling back to sendText");
+      terminal.sendText(command);
+      // No dialog detection possible with sendText — just log the limitation
+    }, SI_WAIT_MS);
+  }
+
+  return vscode.Disposable.from(...disposables);
+}
+
+async function watchExecutionStream(
+  execution: vscode.TerminalShellExecution,
+  terminal: vscode.Terminal,
+  onDialogDetected: (sendResponse: (text: string) => void) => Promise<void>,
+  timeoutMs: number,
+  disposables: vscode.Disposable[],
+): Promise<void> {
+  let detected = false;
+
+  const timer = setTimeout(() => {
+    if (!detected) {
+      log.info("watchExecutionStream: timeout — no dialog detected, assuming clean resume");
+    }
+  }, timeoutMs);
+
+  try {
+    for await (const data of execution.read()) {
+      if (detected) continue; // drain remaining data
+      if (RESUME_DIALOG_PATTERN.test(data)) {
+        detected = true;
+        clearTimeout(timer);
+        log.info("watchExecutionStream: resume dialog detected");
+        await onDialogDetected((text) => terminal.sendText(text));
+      }
+    }
+  } catch {
+    // Stream ended or terminal closed — safe to ignore
+    log.info("watchExecutionStream: stream ended");
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -2,7 +2,7 @@
   "name": "terminal-session-recall",
   "displayName": "Terminal Session Recall",
   "description": "Automatically resume Claude Code CLI sessions after VSCode restart",
-  "version": "1.0.8",
+  "version": "1.1.0-beta.1",
   "publisher": "orange-creatives",
   "license": "MIT",
   "icon": "art/icon.png",
@@ -61,6 +61,17 @@
           "type": "string",
           "default": "claude",
           "description": "Path to the Claude CLI executable"
+        },
+        "claudeResurrect.resumeDialogAction": {
+          "type": "string",
+          "enum": ["summary", "full", "ask"],
+          "default": "summary",
+          "enumDescriptions": [
+            "Auto-select 'Resume from summary' (saves tokens)",
+            "Auto-select 'Resume full session as-is'",
+            "Show a VS Code picker to let you choose each time"
+          ],
+          "description": "How to handle Claude CLI's large-session resume dialog (v2.1.90+)"
         }
       }
     }
